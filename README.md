@@ -6,7 +6,7 @@ Please star if you find it useful!
 
 ## How to use
 
-1. Download from Release section.
+1. Download from [the official website](https://softorage.github.io/7z-GUI-Linux/).
 2. Extract.
 3. Right click -> Properties -> Permissions -> Make executable
 4. Double click the file to open.
