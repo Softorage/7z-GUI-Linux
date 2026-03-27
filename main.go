@@ -187,22 +187,28 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	srcEntry.PlaceHolder = "Select a file or folder to compress..."
 
 	browseFileBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
-		dialog.ShowFileOpen(func(uri fyne.URIReadCloser, err error) {
+		d := dialog.NewFileOpen(func(uri fyne.URIReadCloser, err error) {
 			if err == nil && uri != nil {
 				srcEntry.SetText(uri.URI().Path())
 				setInfo("Selected file to archive: " + uri.URI().Path())
 				uri.Close() // Essential for Fyne: Clean up internal file handles.
 			}
 		}, w)
+		windowSize := w.Canvas().Size()
+		d.Resize(fyne.NewSize(windowSize.Width*0.8, windowSize.Height*0.8))
+		d.Show()
 	})
 
 	browseFolderBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
-		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
+		d := dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
 			if err == nil && uri != nil {
 				srcEntry.SetText(uri.Path())
 				setInfo("Selected folder to archive: " + uri.Path())
 			}
 		}, w)
+		windowSize := w.Canvas().Size()
+		d.Resize(fyne.NewSize(windowSize.Width*0.8, windowSize.Height*0.8))
+		d.Show()
 	})
 
 	browseBtns := container.NewHBox(browseFileBtn, browseFolderBtn)
@@ -211,12 +217,12 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	// Format
 	formatSelect := widget.NewSelect([]string{"7z", "xz", "bzip2", "gzip", "tar", "zip", "wim"}, nil)
 	formatSelect.SetSelected("7z")
-	formatSelect.OnChanged = func(s string) { setInfo("Archive format: Determines the container and algorithms.") }
+	formatSelect.OnChanged = func(_ string) { setInfo("Archive format: Determines the container and algorithms.") }
 
 	// Level
 	levelSelect := widget.NewSelect([]string{"Store", "Fastest", "Fast", "Normal", "Maximum", "Ultra"}, nil)
 	levelSelect.SetSelected("Normal")
-	levelSelect.OnChanged = func(s string) {
+	levelSelect.OnChanged = func(_ string) {
 		setInfo("Compression Level: Higher levels offer better compression but use more memory.")
 	}
 
@@ -225,12 +231,12 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	dictSelect.SetSelected("16 MB")
 	wordSelect := widget.NewSelect([]string{"8", "16", "32", "64", "128", "273"}, nil)
 	wordSelect.SetSelected("64")
-	wordSelect.OnChanged = func(s string) {
+	wordSelect.OnChanged = func(_ string) {
 		setInfo("Word size (fast bytes) determines the length of patterns to match; increasing it can improve compression on structured files but slows down compression speed.")
 	}
 	blockSelect := widget.NewSelect([]string{"Non-solid", "1 MB", "16 MB", "64 MB", "256 MB", "4 GB", "Solid"}, nil)
 	blockSelect.SetSelected("Solid")
-	blockSelect.OnChanged = func(s string) {
+	blockSelect.OnChanged = func(_ string) {
 		setInfo("Determines how many files are compressed together. To extract one file, 7-Zip must decompress all files in the solid block. Under 'Non-Solid', each file is compressed separately resulting in fast extraction, but lower compression. Using a smaller solid block size (64 to 512 MB) is advisable when you need to frequently extract individual files from a large archive.")
 	}
 
@@ -242,12 +248,12 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	}
 	threadSelect := widget.NewSelect(threads, nil)
 	threadSelect.SetSelected(strconv.Itoa(numCPU))
-	threadSelect.OnChanged = func(s string) { setInfo(fmt.Sprintf("CPU Threads: Total available = %d", numCPU)) }
+	threadSelect.OnChanged = func(_ string) { setInfo(fmt.Sprintf("CPU Threads: Total available = %d", numCPU)) }
 
 	// Simulated calculation based on dict size
 	memCompLabel := widget.NewLabel("~150 MB")
 	memDecompLabel := widget.NewLabel("~20 MB")
-	dictSelect.OnChanged = func(s string) {
+	dictSelect.OnChanged = func(_ string) {
 		memCompLabel.SetText("Depends on Dict & Threads")
 		memDecompLabel.SetText("Depends on Dict")
 		setInfo("Dictionary Size: How much data is analyzed in memory for repetitions. The larger it is, higher the compression ratios and more the RAM required. Generally, 32MB-64MB is sufficient for most files, while 512MB+ is recommended for massive archives. Should be less than or equal to the total size of the files being compressed.")
@@ -271,15 +277,17 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	// SFX
 	sfxCheck := widget.NewCheck("Create SFX archive", nil)
-	sfxCheck.OnChanged = func(s string) { setInfo(fmt.Sprintf("SFX: Creates a self-extracting executable in .exe format.")) }
+	sfxCheck.OnChanged = func(_ bool) { setInfo("SFX: Creates a self-extracting executable in .exe format.") }
 
 	sharedCheck := widget.NewCheck("Compress shared files", nil)
-	sharedCheck.OnChanged = func(s string) { setInfo(fmt.Sprintf("Actively detects and groups identical or similar files together before compression and treats them as a single block of data. This allows to find repeating patterns across different files, leading to better results. Adding or extracting a single file from the middle of a large solid archive is slower.")) }
+	sharedCheck.OnChanged = func(_ bool) {
+		setInfo("Actively detects and groups identical or similar files together before compression and treats them as a single block of data. This allows to find repeating patterns across different files, leading to better results. Adding or extracting a single file from the middle of a large solid archive is slower.")
+	}
 
 	// Split
 	splitEntry := widget.NewEntry()
 	splitEntry.PlaceHolder = "e.g., 10M, 100M, 2G"
-	splitEntry.OnChanged = func(s string) {
+	splitEntry.OnChanged = func(_ string) {
 		setInfo("Choose to split the archive in chunks of specified size.")
 	}
 
@@ -294,15 +302,15 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	showPassCheck := widget.NewCheck("Show Password", nil)
 	showPassCheck.Disable()
+	encNameCheck := widget.NewCheck("Encrypt file names", nil)
+	encNameCheck.Disable()
+
 	showPassCheck.OnChanged = func(b bool) {
 		passEntry.Password = !b
 		confirmEntry.Password = !b
 		passEntry.Refresh()
 		confirmEntry.Refresh()
 	}
-
-	encNameCheck := widget.NewCheck("Encrypt file names", nil)
-	encNameCheck.Disable()
 
 	encCheck.OnChanged = func(b bool) {
 		if b {
@@ -333,6 +341,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		blockSelect.Enable()
 		updateSelect.Enable()
 		sfxCheck.Enable()
+		sharedCheck.Enable()
 		splitEntry.Enable()
 		encCheck.Enable()
 		if encCheck.Checked {
@@ -347,6 +356,8 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			blockSelect.Disable() // ZIP does not support Solid blocks
 			sfxCheck.Disable()
 			sfxCheck.SetChecked(false)
+			sharedCheck.Disable()
+			sharedCheck.SetChecked(false)
 			encNameCheck.Disable() // ZIP does not support encrypting file names
 			encNameCheck.SetChecked(false)
 		case "tar":
@@ -357,6 +368,8 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			blockSelect.Disable()
 			sfxCheck.Disable()
 			sfxCheck.SetChecked(false)
+			sharedCheck.Disable()
+			sharedCheck.SetChecked(false)
 			splitEntry.Disable()
 			splitEntry.SetText("")
 			encCheck.Disable()
@@ -366,6 +379,8 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			blockSelect.Disable()
 			sfxCheck.Disable()
 			sfxCheck.SetChecked(false)
+			sharedCheck.Disable()
+			sharedCheck.SetChecked(false)
 			splitEntry.Disable()
 			splitEntry.SetText("")
 			encCheck.Disable()
@@ -376,6 +391,8 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			blockSelect.Disable()
 			sfxCheck.Disable()
 			sfxCheck.SetChecked(false)
+			sharedCheck.Disable()
+			sharedCheck.SetChecked(false)
 			encCheck.Disable()
 			encCheck.SetChecked(false)
 		}
@@ -411,7 +428,23 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		}
 
 		// Map options to 7z CLI
-		args := build7zArgs(srcEntry.Text, formatSelect.Selected, levelSelect.Selected, threadSelect.Selected, updateSelect.Selected, sfxCheck.Checked, encCheck.Checked, passEntry.Text, encNameCheck.Checked, splitEntry.Text)
+		args := build7zArgs(
+			srcEntry.Text,
+			formatSelect.Selected,
+			levelSelect.Selected,
+			threadSelect.Selected,
+			updateSelect.Selected,
+			sfxCheck.Checked,
+			encCheck.Checked,
+			passEntry.Text,
+			encNameCheck.Checked,
+			splitEntry.Text,
+			dictSelect.Selected,
+			wordSelect.Selected,
+			blockSelect.Selected,
+			sharedCheck.Checked,
+		)
+
 		tabs.SelectIndex(2) // Switch to Status tab
 		startOperation(args, "Compressing", w)
 	})
@@ -437,11 +470,20 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		widget.NewFormItem("Enc. Settings:", container.NewHBox(showPassCheck, encNameCheck)),
 	)
 
-	return container.NewVScroll(container.NewPadded(container.NewVBox(
-		form,
-		widget.NewSeparator(),
-		container.NewHBox(layout.NewSpacer(), widget.NewButton("Cancel", func() { srcEntry.SetText("") }), archiveBtn),
-	)))
+	return container.NewPadded(container.NewBorder(
+		nil,
+		container.NewVBox(
+			widget.NewSeparator(),
+			container.NewHBox(
+				layout.NewSpacer(),
+				widget.NewButton("Cancel", func() { srcEntry.SetText("") }),
+				archiveBtn,
+			),
+		),
+		nil,
+		nil,
+		container.NewVScroll(form),
+	))
 }
 
 func buildExtractTab(w fyne.Window) fyne.CanvasObject {
@@ -449,20 +491,26 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 	destEntry := widget.NewEntry()
 
 	srcBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
-		dialog.ShowFileOpen(func(uri fyne.URIReadCloser, err error) {
+		d := dialog.NewFileOpen(func(uri fyne.URIReadCloser, err error) {
 			if err == nil && uri != nil {
 				srcEntry.SetText(uri.URI().Path())
 				uri.Close()
 			}
 		}, w)
+		windowSize := w.Canvas().Size()
+		d.Resize(fyne.NewSize(windowSize.Width*0.8, windowSize.Height*0.8))
+		d.Show()
 	})
 
 	destBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
-		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
+		d := dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
 			if err == nil && uri != nil {
 				destEntry.SetText(uri.Path())
 			}
 		}, w)
+		windowSize := w.Canvas().Size()
+		d.Resize(fyne.NewSize(windowSize.Width*0.8, windowSize.Height*0.8))
+		d.Show()
 	})
 
 	extractBtn := widget.NewButtonWithIcon("Extract", theme.DownloadIcon(), func() {
@@ -547,7 +595,8 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 
 // --- LOGIC MAPPER & EXECUTION ---
 
-func build7zArgs(src, format, level, threads, update string, sfx, enc bool, pass string, encName bool, split string) []string {
+func build7zArgs(src, format string, level string, threads, update string, sfx bool, enc bool, pass string, encName bool, split string, dictSize string, wordSize, blockSize string, shared bool) []string {
+
 	// Standardize extensions for common formats mapped by 7-Zip
 	extMap := map[string]string{
 		"7z":    ".7z",
@@ -573,17 +622,75 @@ func build7zArgs(src, format, level, threads, update string, sfx, enc bool, pass
 
 	// Determine command line action (a = Add, u = Update)
 	cmdAction := "a"
-	if update != "Add and replace files" && format != "gzip" && format != "bzip2" && format != "xz" && format != "tar" {
-		cmdAction = "u"
+	var updateSwitches []string
+
+	if format != "tar" && format != "gzip" && format != "bzip2" && format != "xz" {
+		if update != "Add and replace files" {
+			cmdAction = "u"
+			if update == "Freshen existing files" {
+				// -uw0 avoids adding new files that are on disk only
+				updateSwitches = append(updateSwitches, "-uw0")
+			} else if update == "Synchronize files" {
+				// -up0 deletes files from the archive that are missing on disk
+				updateSwitches = append(updateSwitches, "-up0")
+			}
+		}
 	}
 
 	// -bsp1 enables progress output to stdout, -t Map format
 	args := []string{cmdAction, dest, src, "-bsp1", "-t" + format}
+	args = append(args, updateSwitches...)
 
 	// Only apply compression level if the format supports it (tar does not)
 	if format != "tar" {
 		lvlMap := map[string]string{"Store": "0", "Fastest": "1", "Fast": "3", "Normal": "5", "Maximum": "7", "Ultra": "9"}
 		args = append(args, "-mx="+lvlMap[level])
+
+		// Dictionary and Word size are only reliably scalable across 7z and xz.
+		// Exposing large dictionary values to deflaters (zip/gzip) will prompt "Unsupported Method" errors in 7z CLI
+		if format == "7z" || format == "xz" {
+			dictMap := map[string]string{
+				"64 KB":  "64k",
+				"1 MB":   "1m",
+				"16 MB":  "16m",
+				"32 MB":  "32m",
+				"64 MB":  "64m",
+				"128 MB": "128m",
+			}
+			if d, ok := dictMap[dictSize]; ok {
+				args = append(args, "-md="+d)
+			}
+
+			if wordSize != "" {
+				args = append(args, "-mfb="+wordSize)
+			}
+		}
+	}
+
+	// Solid Block Size and Solid Sorting (-mqs) is primarily a 7z concept
+	if format == "7z" {
+		blockMap := map[string]string{
+			"Non-solid": "off",
+			"1 MB":      "1m",
+			"16 MB":     "16m",
+			"64 MB":     "64m",
+			"256 MB":    "256m",
+			"4 GB":      "4g",
+			"Solid":     "on",
+		}
+		if b, ok := blockMap[blockSize]; ok {
+			args = append(args, "-ms="+b)
+		}
+
+		if shared {
+			// Instructs solid mode to sort by extension, intelligently matching similar files into the same data blocks
+			args = append(args, "-mqs=on")
+		}
+	}
+
+	// Compress shared files allows the system to read files opened/locked for writing by other applications
+	if shared {
+		args = append(args, "-ssw")
 	}
 
 	// Map threads (generally accepted across the board, ignored if unsupported)
