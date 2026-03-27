@@ -139,8 +139,6 @@ func main() {
 	w.ShowAndRun()
 }
 
-// --- DEPENDENCY CHECK ---
-
 func checkDependencies(w fyne.Window) {
 	_, err := exec.LookPath("7z")
 	if err != nil {
@@ -209,9 +207,8 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	browseBtns := container.NewHBox(browseFileBtn, browseFolderBtn)
 
-	// --- WIDGET DECLARATIONS ---
-	// We declare them first so they can be referenced and modified inside OnChanged functions.
-
+	// Declare the widgets, set default state, and the info to display on change
+	// Format
 	formatSelect := widget.NewSelect([]string{"7z", "xz", "bzip2", "gzip", "tar", "zip", "wim"}, nil)
 	formatSelect.SetSelected("7z")
 	formatSelect.OnChanged = func(s string) { setInfo("Archive format: Determines the container and algorithms.") }
@@ -273,8 +270,11 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	}
 
 	// SFX
-	sfxCheck := widget.NewCheck("Create SFX archive", func(b bool) { setInfo("SFX: Creates a self-extracting executable.") })
+	sfxCheck := widget.NewCheck("Create SFX archive", nil)
+	sfxCheck.OnChanged = func(s string) { setInfo(fmt.Sprintf("SFX: Creates a self-extracting executable in .exe format.")) }
+
 	sharedCheck := widget.NewCheck("Compress shared files", nil)
+	sharedCheck.OnChanged = func(s string) { setInfo(fmt.Sprintf("Actively detects and groups identical or similar files together before compression and treats them as a single block of data. This allows to find repeating patterns across different files, leading to better results. Adding or extracting a single file from the middle of a large solid archive is slower.")) }
 
 	// Split
 	splitEntry := widget.NewEntry()
@@ -294,17 +294,15 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	showPassCheck := widget.NewCheck("Show Password", nil)
 	showPassCheck.Disable()
-	encNameCheck := widget.NewCheck("Encrypt file names", nil)
-	encNameCheck.Disable()
-
-	// --- EVENT HANDLERS ---
-
 	showPassCheck.OnChanged = func(b bool) {
 		passEntry.Password = !b
 		confirmEntry.Password = !b
 		passEntry.Refresh()
 		confirmEntry.Refresh()
 	}
+
+	encNameCheck := widget.NewCheck("Encrypt file names", nil)
+	encNameCheck.Disable()
 
 	encCheck.OnChanged = func(b bool) {
 		if b {
@@ -328,7 +326,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	formatSelect.OnChanged = func(s string) {
 		setInfo(fmt.Sprintf("Archive format set to: %s", s))
 
-		// 1. Reset all fields to Enabled as a baseline
+		// Reset all fields to Enabled as a baseline
 		levelSelect.Enable()
 		dictSelect.Enable()
 		wordSelect.Enable()
@@ -343,7 +341,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			encNameCheck.Enable()
 		}
 
-		// 2. Selectively disable based on format limitations
+		// Selectively disable based on format limitations
 		switch s {
 		case "zip":
 			blockSelect.Disable() // ZIP does not support Solid blocks
