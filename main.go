@@ -66,7 +66,7 @@ func setInfo(text string) {
 				infoBar.SetText("Operation in progress...")
 			}
 		} else {
-			infoBar.SetText("Ready. Hover or click an option to see its description.")
+			infoBar.SetText("Ready. Interact with an option to see its description.")
 		}
 	})
 }
@@ -97,7 +97,7 @@ func main() {
 	w.Resize(fyne.NewSize(800, 650))
 
 	// Bottom Info Bar
-	infoBar = widget.NewLabel("Ready. Hover or click an option to see its description.")
+	infoBar = widget.NewLabel("Ready. Interact with an option to see its description.")
 	infoBar.Alignment = fyne.TextAlignCenter
 	infoBar.Wrapping = fyne.TextWrapWord // Properly wraps text instead of resizing window
 
