@@ -33,6 +33,8 @@ var (
 	currentCmd         *exec.Cmd
 	isPaused           bool
 	isOperationRunning bool
+	currentPercent     float64
+	stateMu            sync.RWMutex // Protects state across goroutines to prevent data races
 
 	// Timers and mutexes to auto-clear UI text after 6 seconds
 	infoBarTimer *time.Timer
@@ -52,7 +54,20 @@ func setInfo(text string) {
 		infoBarTimer.Stop()
 	}
 	infoBarTimer = time.AfterFunc(6*time.Second, func() {
-		infoBar.SetText("Ready.")
+		stateMu.RLock()
+		running := isOperationRunning
+		paused := isPaused
+		stateMu.RUnlock()
+
+		if running {
+			if paused {
+				infoBar.SetText("Operation paused.")
+			} else {
+				infoBar.SetText("Operation in progress...")
+			}
+		} else {
+			infoBar.SetText("Ready. Hover or click an option to see its description.")
+		}
 	})
 }
 
@@ -66,8 +81,13 @@ func setFinalStatus(text string) {
 		statusTimer.Stop()
 	}
 	statusTimer = time.AfterFunc(6*time.Second, func() {
-		statusLog.SetText("No operations running.")
-		progressBar.SetValue(0)
+		stateMu.RLock()
+		running := isOperationRunning
+		stateMu.RUnlock()
+		if !running {
+			statusLog.SetText("No operations running.")
+			progressBar.SetValue(0)
+		}
 	})
 }
 
@@ -79,6 +99,7 @@ func main() {
 	// Bottom Info Bar
 	infoBar = widget.NewLabel("Ready. Hover or click an option to see its description.")
 	infoBar.Alignment = fyne.TextAlignCenter
+	infoBar.Wrapping = fyne.TextWrapWord // Properly wraps text instead of resizing window
 
 	// Build Tabs
 	compressTab := buildCompressTab(w)
@@ -93,7 +114,11 @@ func main() {
 
 	// Intercept tab switching to lock user on Status tab during operations
 	tabs.OnSelected = func(t *container.TabItem) {
-		if isOperationRunning && t.Text != "Status" {
+		stateMu.RLock()
+		running := isOperationRunning
+		stateMu.RUnlock()
+
+		if running && t.Text != "Status" {
 			setInfo("Action locked: Operation currently in progress.")
 			tabs.SelectIndex(2) // Force back to Status (index 2)
 		}
@@ -159,17 +184,30 @@ func install7Zip(w fyne.Window) {
 // --- TABS ---
 
 func buildCompressTab(w fyne.Window) fyne.CanvasObject {
-	// Browse Folder
+	// Browse Folder or File
 	srcEntry := widget.NewEntry()
 	srcEntry.PlaceHolder = "Select a file or folder to compress..."
-	browseBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
-		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
-			if uri != nil {
-				srcEntry.SetText(uri.Path())
-				setInfo("Selected path to archive: " + uri.Path())
+
+	browseFileBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
+		dialog.ShowFileOpen(func(uri fyne.URIReadCloser, err error) {
+			if err == nil && uri != nil {
+				srcEntry.SetText(uri.URI().Path())
+				setInfo("Selected file to archive: " + uri.URI().Path())
+				uri.Close() // Essential for Fyne: Clean up internal file handles.
 			}
 		}, w)
 	})
+
+	browseFolderBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
+		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
+			if err == nil && uri != nil {
+				srcEntry.SetText(uri.Path())
+				setInfo("Selected folder to archive: " + uri.Path())
+			}
+		}, w)
+	})
+
+	browseBtns := container.NewHBox(browseFileBtn, browseFolderBtn)
 
 	// Format
 	formatSelect := widget.NewSelect([]string{"7z", "xz", "bzip2", "gzip", "tar", "zip", "wim"}, nil)
@@ -212,18 +250,25 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	memDecompLabel := widget.NewLabel("~20 MB")
 	dictSelect.OnChanged = func(s string) {
 		memCompLabel.SetText("Depends on Dict & Threads")
+		memDecompLabel.SetText("Depends on Dict")
 		setInfo("Dictionary Size: How much data is analyzed in memory for repetitions. The larger it is, higher the compression ratios and more the RAM required. Generally, 32MB-64MB is sufficient for most files, while 512MB+ is recommended for massive archives. Should be less than or equal to the total size of the files being compressed.")
 	}
 
 	// Update Mode
 	updateSelect := widget.NewSelect([]string{"Add and replace files", "Update and add files", "Freshen existing files", "Synchronize files"}, nil)
 	updateSelect.SetSelected("Add and replace files")
-	/* show this info OnChanged:
-	Add and Replace (Default): Adds all specified files to the archive. If a file exists, it overwrites it, regardless of whether it is newer or older than the archived version.
-	Update and Add: Adds new files and only updates files in the archive that are older than the corresponding files on the disk.
-	Freshen: Only updates files that already exist in the archive. It does not add new files to the archive.
-	Synchronize: Updates older files, adds new files, and deletes files from the archive that are no longer present on the disk.
-	*/
+	updateSelect.OnChanged = func(s string) {
+		switch s {
+		case "Add and replace files":
+			setInfo("Add and Replace (Default): Adds all specified files to the archive. Overwrites if they already exist.")
+		case "Update and add files":
+			setInfo("Update and Add: Adds new files and only updates files in the archive that are older.")
+		case "Freshen existing files":
+			setInfo("Freshen: Only updates files that already exist in the archive. Does not add new files.")
+		case "Synchronize files":
+			setInfo("Synchronize: Updates older files, adds new files, and deletes files from the archive that are no longer present on the disk.")
+		}
+	}
 
 	// SFX
 	sfxCheck := widget.NewCheck("Create SFX archive", func(b bool) { setInfo("SFX: Creates a self-extracting executable.") })
@@ -273,6 +318,14 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	// Buttons
 	archiveBtn := widget.NewButtonWithIcon("Archive", theme.ConfirmIcon(), func() {
+		stateMu.RLock()
+		running := isOperationRunning
+		stateMu.RUnlock()
+		if running {
+			dialog.ShowError(fmt.Errorf("an operation is already running"), w)
+			return
+		}
+
 		if srcEntry.Text == "" {
 			dialog.ShowError(fmt.Errorf("please select a source file/folder"), w)
 			return
@@ -283,15 +336,15 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		}
 
 		// Map options to 7z CLI
-		args := build7zArgs(srcEntry.Text, formatSelect.Selected, levelSelect.Selected, threadSelect.Selected, sfxCheck.Checked, encCheck.Checked, passEntry.Text, encNameCheck.Checked, splitEntry.Text)
+		args := build7zArgs(srcEntry.Text, formatSelect.Selected, levelSelect.Selected, threadSelect.Selected, updateSelect.Selected, sfxCheck.Checked, encCheck.Checked, passEntry.Text, encNameCheck.Checked, splitEntry.Text)
 		tabs.SelectIndex(2) // Switch to Status tab
-		startOperation(args, "Compressing")
+		startOperation(args, "Compressing", w)
 	})
 	archiveBtn.Importance = widget.HighImportance
 
 	// Form Layout
 	form := widget.NewForm(
-		widget.NewFormItem("Source:", container.NewBorder(nil, nil, nil, browseBtn, srcEntry)),
+		widget.NewFormItem("Source:", container.NewBorder(nil, nil, nil, browseBtns, srcEntry)),
 		widget.NewFormItem("Archive format:", formatSelect),
 		widget.NewFormItem("Compression level:", levelSelect),
 		widget.NewFormItem("Dictionary size:", dictSelect),
@@ -320,23 +373,32 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 	srcEntry := widget.NewEntry()
 	destEntry := widget.NewEntry()
 
-	srcBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
+	srcBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
 		dialog.ShowFileOpen(func(uri fyne.URIReadCloser, err error) {
-			if uri != nil {
+			if err == nil && uri != nil {
 				srcEntry.SetText(uri.URI().Path())
+				uri.Close()
 			}
 		}, w)
 	})
 
 	destBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
 		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
-			if uri != nil {
+			if err == nil && uri != nil {
 				destEntry.SetText(uri.Path())
 			}
 		}, w)
 	})
 
 	extractBtn := widget.NewButtonWithIcon("Extract", theme.DownloadIcon(), func() {
+		stateMu.RLock()
+		running := isOperationRunning
+		stateMu.RUnlock()
+		if running {
+			dialog.ShowError(fmt.Errorf("an operation is already running"), w)
+			return
+		}
+
 		if srcEntry.Text == "" || destEntry.Text == "" {
 			dialog.ShowError(fmt.Errorf("select both archive and destination"), w)
 			return
@@ -344,7 +406,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 
 		args := []string{"x", srcEntry.Text, "-o" + destEntry.Text, "-bsp1", "-y"}
 		tabs.SelectIndex(2)
-		startOperation(args, "Extracting")
+		startOperation(args, "Extracting", w)
 	})
 	extractBtn.Importance = widget.HighImportance
 
@@ -362,9 +424,12 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 
 func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	statusLog = widget.NewLabel("No operations running.")
+	statusLog.Wrapping = fyne.TextWrapWord
 	progressBar = widget.NewProgressBar()
 
 	pauseBtn = widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), func() {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		if currentCmd != nil && currentCmd.Process != nil {
 			if !isPaused {
 				// Send SIGSTOP to pause Linux process
@@ -387,6 +452,8 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	pauseBtn.Disable()
 
 	cancelBtn = widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
+		stateMu.Lock()
+		defer stateMu.Unlock()
 		if currentCmd != nil && currentCmd.Process != nil {
 			currentCmd.Process.Kill()
 			setInfo("Operation Cancelled.")
@@ -405,17 +472,37 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 
 // --- LOGIC MAPPER & EXECUTION ---
 
-func build7zArgs(src, format, level, threads string, sfx, enc bool, pass string, encName bool, split string) []string {
-	// Destination filename logic
+func build7zArgs(src, format, level, threads, update string, sfx, enc bool, pass string, encName bool, split string) []string {
+	// Standardize extensions for common formats mapped by 7-Zip
+	extMap := map[string]string{
+		"7z":    ".7z",
+		"xz":    ".xz",
+		"bzip2": ".bz2",
+		"gzip":  ".gz",
+		"tar":   ".tar",
+		"zip":   ".zip",
+		"wim":   ".wim",
+	}
+
 	base := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
-	ext := "." + format
+	ext, ok := extMap[format]
+	if !ok {
+		ext = "." + format
+	}
+
 	if sfx {
 		ext = ".exe"
 	}
 	dest := filepath.Join(filepath.Dir(src), base+ext)
 
+	// Determine command line action (a = Add, u = Update)
+	cmdAction := "a"
+	if update != "Add and replace files" {
+		cmdAction = "u"
+	}
+
 	// -bsp1 enables progress output to stdout, -t Map format
-	args := []string{"a", dest, src, "-bsp1", "-t" + format}
+	args := []string{cmdAction, dest, src, "-bsp1", "-t" + format}
 
 	// Map level (-mx0 to -mx9), -mmt Map threads
 	lvlMap := map[string]string{"Store": "0", "Fastest": "1", "Fast": "3", "Normal": "5", "Maximum": "7", "Ultra": "9"}
@@ -438,7 +525,7 @@ func build7zArgs(src, format, level, threads string, sfx, enc bool, pass string,
 	return args
 }
 
-func startOperation(args []string, mode string) {
+func startOperation(args []string, mode string, w fyne.Window) {
 	currentCmd = exec.Command("7z", args...)
 
 	stdout, err := currentCmd.StdoutPipe()
@@ -447,9 +534,13 @@ func startOperation(args []string, mode string) {
 		return
 	}
 
-	// Lock UI functionality
+	// Lock UI functionality safely
+	stateMu.Lock()
 	isOperationRunning = true
 	isPaused = false
+	currentPercent = 0
+	stateMu.Unlock()
+
 	progressBar.SetValue(0)
 
 	// Set buttons active
@@ -463,31 +554,39 @@ func startOperation(args []string, mode string) {
 
 	err = currentCmd.Start()
 	if err != nil {
+		stateMu.Lock()
 		isOperationRunning = false
+		currentCmd = nil
+		stateMu.Unlock()
+
 		pauseBtn.Disable()
 		cancelBtn.Disable()
 		setFinalStatus(fmt.Sprintf("Failed to start 7-Zip: %v", err))
 		return
 	}
 
-	// Shared state updated by byte-reader and read by 1-second ticker
-	var currentPercent float64
 	ticker := time.NewTicker(1 * time.Second)
 
 	// UI Update Routine (Once per second)
 	go func() {
 		for range ticker.C {
-			if !isOperationRunning {
+			stateMu.RLock()
+			running := isOperationRunning
+			paused := isPaused
+			pct := currentPercent
+			stateMu.RUnlock()
+
+			if !running {
 				return
 			}
-			if isPaused {
+			if paused {
 				continue
 			}
 
 			// Refresh Fyne widgets
-			progressBar.SetValue(currentPercent / 100.0)
+			progressBar.SetValue(pct / 100.0)
 			elapsed := time.Since(startTime).Round(time.Second)
-			statusLog.SetText(fmt.Sprintf("Status: Running\nElapsed Time: %s\nProgress: %.0f%%", elapsed, currentPercent))
+			statusLog.SetText(fmt.Sprintf("Status: Running\nElapsed Time: %s\nProgress: %.0f%%", elapsed, pct))
 		}
 	}()
 
@@ -508,7 +607,9 @@ func startOperation(args []string, mode string) {
 					matches := re.FindStringSubmatch(str)
 					if len(matches) > 1 {
 						val, _ := strconv.ParseFloat(matches[1], 64)
+						stateMu.Lock()
 						currentPercent = val
+						stateMu.Unlock()
 					}
 					currentLine = currentLine[:0]
 				} else {
@@ -523,21 +624,26 @@ func startOperation(args []string, mode string) {
 		err = currentCmd.Wait()
 
 		// Unlock the UI
+		stateMu.Lock()
 		isOperationRunning = false
+		currentCmd = nil
+		stateMu.Unlock()
+
 		pauseBtn.Disable()
 		cancelBtn.Disable()
 
 		if err != nil {
 			if err.Error() == "signal: killed" {
 				setFinalStatus("Operation was cancelled by user.")
+				setInfo("Cancelled.")
 			} else {
 				setFinalStatus(fmt.Sprintf("Finished with errors: %v", err))
+				setInfo("Error during operation.")
 			}
 		} else {
 			progressBar.SetValue(1.0)
 			setFinalStatus("Operation completed successfully!")
 			setInfo("Done.")
 		}
-		currentCmd = nil
 	}()
 }
