@@ -209,7 +209,9 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	browseBtns := container.NewHBox(browseFileBtn, browseFolderBtn)
 
-	// Format
+	// --- WIDGET DECLARATIONS ---
+	// We declare them first so they can be referenced and modified inside OnChanged functions.
+
 	formatSelect := widget.NewSelect([]string{"7z", "xz", "bzip2", "gzip", "tar", "zip", "wim"}, nil)
 	formatSelect.SetSelected("7z")
 	formatSelect.OnChanged = func(s string) { setInfo("Archive format: Determines the container and algorithms.") }
@@ -290,23 +292,29 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	confirmEntry.PlaceHolder = "Confirm Password"
 	confirmEntry.Disable()
 
-	showPassCheck := widget.NewCheck("Show Password", func(b bool) {
+	showPassCheck := widget.NewCheck("Show Password", nil)
+	showPassCheck.Disable()
+	encNameCheck := widget.NewCheck("Encrypt file names", nil)
+	encNameCheck.Disable()
+
+	// --- EVENT HANDLERS ---
+
+	showPassCheck.OnChanged = func(b bool) {
 		passEntry.Password = !b
 		confirmEntry.Password = !b
 		passEntry.Refresh()
 		confirmEntry.Refresh()
-	})
-	showPassCheck.Disable()
-
-	encNameCheck := widget.NewCheck("Encrypt file names", nil)
-	encNameCheck.Disable()
+	}
 
 	encCheck.OnChanged = func(b bool) {
 		if b {
 			passEntry.Enable()
 			confirmEntry.Enable()
 			showPassCheck.Enable()
-			encNameCheck.Enable()
+			// Only allow name encryption if the format is 7z
+			if formatSelect.Selected == "7z" {
+				encNameCheck.Enable()
+			}
 		} else {
 			passEntry.Disable()
 			confirmEntry.Disable()
@@ -314,6 +322,65 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			encNameCheck.Disable()
 		}
 		setInfo("Encryption: Protect your archive with AES-256 password encryption.")
+	}
+
+	// Dynamic UI Toggle based on Archive Format
+	formatSelect.OnChanged = func(s string) {
+		setInfo(fmt.Sprintf("Archive format set to: %s", s))
+
+		// 1. Reset all fields to Enabled as a baseline
+		levelSelect.Enable()
+		dictSelect.Enable()
+		wordSelect.Enable()
+		blockSelect.Enable()
+		updateSelect.Enable()
+		sfxCheck.Enable()
+		splitEntry.Enable()
+		encCheck.Enable()
+		if encCheck.Checked {
+			passEntry.Enable()
+			confirmEntry.Enable()
+			encNameCheck.Enable()
+		}
+
+		// 2. Selectively disable based on format limitations
+		switch s {
+		case "zip":
+			blockSelect.Disable() // ZIP does not support Solid blocks
+			sfxCheck.Disable()
+			sfxCheck.SetChecked(false)
+			encNameCheck.Disable() // ZIP does not support encrypting file names
+			encNameCheck.SetChecked(false)
+		case "tar":
+			// Tar doesn't compress or encrypt
+			levelSelect.Disable()
+			dictSelect.Disable()
+			wordSelect.Disable()
+			blockSelect.Disable()
+			sfxCheck.Disable()
+			sfxCheck.SetChecked(false)
+			splitEntry.Disable()
+			splitEntry.SetText("")
+			encCheck.Disable()
+			encCheck.SetChecked(false)
+		case "gzip", "bzip2", "xz":
+			// Single stream compressors
+			blockSelect.Disable()
+			sfxCheck.Disable()
+			sfxCheck.SetChecked(false)
+			splitEntry.Disable()
+			splitEntry.SetText("")
+			encCheck.Disable()
+			encCheck.SetChecked(false)
+			updateSelect.Disable() // Cannot update a stream easily
+		case "wim":
+			wordSelect.Disable()
+			blockSelect.Disable()
+			sfxCheck.Disable()
+			sfxCheck.SetChecked(false)
+			encCheck.Disable()
+			encCheck.SetChecked(false)
+		}
 	}
 
 	// Buttons
@@ -330,6 +397,16 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			dialog.ShowError(fmt.Errorf("please select a source file/folder"), w)
 			return
 		}
+
+		// Catch folder selection on single-stream formats
+		fInfo, err := os.Stat(srcEntry.Text)
+		if err == nil && fInfo.IsDir() {
+			if formatSelect.Selected == "gzip" || formatSelect.Selected == "bzip2" || formatSelect.Selected == "xz" {
+				dialog.ShowError(fmt.Errorf("%s cannot compress directories directly. Please use 'tar' first or choose '7z'/'zip'", formatSelect.Selected), w)
+				return
+			}
+		}
+
 		if encCheck.Checked && passEntry.Text != confirmEntry.Text {
 			dialog.ShowError(fmt.Errorf("passwords do not match"), w)
 			return
@@ -490,34 +567,45 @@ func build7zArgs(src, format, level, threads, update string, sfx, enc bool, pass
 		ext = "." + format
 	}
 
-	if sfx {
+	// Only 7z truly supports SFX cleanly via standard 7-Zip module
+	if sfx && format == "7z" {
 		ext = ".exe"
 	}
 	dest := filepath.Join(filepath.Dir(src), base+ext)
 
 	// Determine command line action (a = Add, u = Update)
 	cmdAction := "a"
-	if update != "Add and replace files" {
+	if update != "Add and replace files" && format != "gzip" && format != "bzip2" && format != "xz" && format != "tar" {
 		cmdAction = "u"
 	}
 
 	// -bsp1 enables progress output to stdout, -t Map format
 	args := []string{cmdAction, dest, src, "-bsp1", "-t" + format}
 
-	// Map level (-mx0 to -mx9), -mmt Map threads
-	lvlMap := map[string]string{"Store": "0", "Fastest": "1", "Fast": "3", "Normal": "5", "Maximum": "7", "Ultra": "9"}
-	args = append(args, "-mx="+lvlMap[level], "-mmt="+threads)
+	// Only apply compression level if the format supports it (tar does not)
+	if format != "tar" {
+		lvlMap := map[string]string{"Store": "0", "Fastest": "1", "Fast": "3", "Normal": "5", "Maximum": "7", "Ultra": "9"}
+		args = append(args, "-mx="+lvlMap[level])
+	}
 
-	// Map Split
-	if split != "" {
+	// Map threads (generally accepted across the board, ignored if unsupported)
+	args = append(args, "-mmt="+threads)
+
+	// Map Split (Not supported by tar/gzip/bzip2/xz)
+	if split != "" && format != "tar" && format != "gzip" && format != "bzip2" && format != "xz" {
 		args = append(args, "-v"+split)
 	}
-	if sfx {
+
+	if sfx && format == "7z" {
 		args = append(args, "-sfx")
 	}
-	if enc && pass != "" {
+
+	// Map Encryption (Only supported by 7z and zip)
+	if enc && pass != "" && (format == "7z" || format == "zip") {
 		args = append(args, "-p"+pass)
-		if encName {
+
+		// Only 7z supports header/filename encryption natively this way
+		if encName && format == "7z" {
 			args = append(args, "-mhe=on")
 		}
 	}
