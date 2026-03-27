@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>7z GUI Linux&nbsp;&nbsp;- Nightly Builds</title>
+  <!-- PicoCSS via CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@latest/css/pico.classless.min.css">
+  <style>
+    .file-list {
+      list-style: none;
+      padding-left: 1rem;
+    }
+    .file-list li {
+      margin: 0.5rem 0;
+    }
+    .breadcrumb {
+      margin-bottom: 1rem;
+    }
+    .breadcrumb a {
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>7z GUI Linux&nbsp;&nbsp;- Nightly Builds</h1>
+    <p><a href="https://github.com/Softorage/7z-GUI-Linux">Github</a> | <a href="https://github.com/Softorage/7z-GUI-Linux/issues">Issues</a> | <a href="https://github.com/Softorage/7z-GUI-Linux/discussions">Discussions</a></p>
+    <p>
+      7z-GUI-Linux is a simple GUI for 7-zip on Linux based operating systems. It doesn't require any dependency to run (other than 7z). It is based on the '7-zip for Windows'.
+    </p>
+    <p>
+      <i>This page including the Nightly Builds below are built using GitHub Actions.</i><br>
+      Please use GitHub Release to get the latest stable version as the versions here can be unstable.
+    </p>
+    <hr>
+    <small>Leave a star on GitHub if you like this project!</small>
+    <hr>
+    <p>
+      To install <strong>7z GUI Linux</strong> on your system, follow these steps:
+    </p>
+    <ol type="1">
+      <li>Download latest release from below.</li>
+      <li>Extract the archive. You should now have the `7z-GUI-Linux` file.</li>
+      <li>Simply make `7z-GUI-Linux` executable => right click `7z-GUI-Linux`, go to Properties, and in the Permissions tab, tick 'Make executable'</li>
+      <li>Double click `7z-GUI-Linux` to launch!</li>
+    </ol>
+  </header>
+  <main>
+    <div>Current directory:
+      <!-- Breadcrumb navigation -->
+      <nav id="breadcrumb" class="breadcrumb"></nav>
+    </div>
+    <div>Download:
+      <!-- File and folder list -->
+      <ul id="fileList" class="file-list"></ul>
+    </div>
+  </main>
+  <footer>
+    <p><small>a project by <a href="https://softorage.com/">Softorage</a></small></p>
+  </footer>
+
+  <script>
+    let fileTree = null;
+    // breadcrumb holds the nodes from the root (index 0) to the current directory.
+    let breadcrumb = [];
+
+    // Compute the relative URL for a child node.
+    // If the root is "public" and you want to hide it, skip it in the URL.
+    function computePath(child) {
+      // Build parts from breadcrumb (skipping the root if its name is "public")
+      let parts = [];
+      for (let i = 0; i < breadcrumb.length; i++) {
+        if (i === 0 && breadcrumb[i].name === "public") continue;
+        parts.push(breadcrumb[i].name);
+      }
+      parts.push(child.name);
+      return parts.join('/');
+    }
+
+    // Render breadcrumb navigation.
+    function renderBreadcrumb() {
+      const nav = document.getElementById('breadcrumb');
+      nav.innerHTML = '';
+
+      // Always add a link to the root.
+      const rootLink = document.createElement('a');
+      rootLink.href = '#';
+      rootLink.textContent = breadcrumb[0].name;
+      rootLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        breadcrumb = [fileTree];
+        renderDirectory(fileTree);
+      });
+      nav.appendChild(rootLink);
+
+      // For subsequent levels, add links.
+      for (let i = 1; i < breadcrumb.length; i++) {
+        const separator = document.createTextNode(' / ');
+        nav.appendChild(separator);
+
+        const link = document.createElement('a');
+        link.href = '#';
+        link.textContent = breadcrumb[i].name;
+        // Clicking a breadcrumb link goes back to that level.
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          breadcrumb = breadcrumb.slice(0, i + 1);
+          renderDirectory(breadcrumb[breadcrumb.length - 1]);
+        });
+        nav.appendChild(link);
+      }
+    }
+
+    // Render the list of files and directories for a given node.
+    function renderDirectory(node) {
+      renderBreadcrumb();
+      const list = document.getElementById('fileList');
+      list.innerHTML = '';
+
+      // Ensure we have a "contents" array.
+      if (!node.contents || node.contents.length === 0) {
+        const li = document.createElement('li');
+        li.textContent = 'No files or folders here.';
+        list.appendChild(li);
+        return;
+      }
+
+      // Sort directories first.
+      const sortedItems = node.contents.slice().sort((a, b) => {
+        if (a.type === b.type) return a.name.localeCompare(b.name);
+        return a.type === 'directory' ? -1 : 1;
+      });
+
+      sortedItems.forEach(item => {
+        const li = document.createElement('li');
+        const link = document.createElement('a');
+        link.href = '#';
+
+        if (item.type === 'directory') {
+          link.textContent = item.name + '/';
+          link.addEventListener('click', (e) => {
+            e.preventDefault();
+            breadcrumb.push(item);
+            renderDirectory(item);
+          });
+        } else if (item.type === 'file') {
+          // For files, compute the URL for download.
+          const filePath = computePath(item);
+          link.href = filePath;
+          link.textContent = item.name;
+          // Optionally, you can add link.download = item.name; if you want to force download.
+        }
+        li.appendChild(link);
+        list.appendChild(li);
+      });
+    }
+
+    // Fetch the JSON manifest (output of tree -J)
+    fetch('files.json')
+      .then(response => response.json())
+      .then(data => {
+        // data is an array with a single element.
+        fileTree = data[0];
+        // Initialize breadcrumb with the root.
+        breadcrumb = [fileTree];
+        renderDirectory(fileTree);
+      })
+      .catch(error => console.error('Error loading file manifest:', error));
+  </script>
+</body>
+</html>
