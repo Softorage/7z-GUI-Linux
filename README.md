@@ -26,3 +26,7 @@ Offers similar GUI to the Windows counterpart.
 7-zip
 p7zip
 Softorage
+
+## License
+
+GPL v3
