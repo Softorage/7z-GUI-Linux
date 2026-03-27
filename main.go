@@ -188,8 +188,14 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	dictSelect.SetSelected("16 MB")
 	wordSelect := widget.NewSelect([]string{"8", "16", "32", "64", "128", "273"}, nil)
 	wordSelect.SetSelected("64")
+	wordSelect.OnChanged = func(s string) {
+		setInfo("Word size (fast bytes) determines the length of patterns to match; increasing it can improve compression on structured files but slows down compression speed.")
+	}
 	blockSelect := widget.NewSelect([]string{"Non-solid", "1 MB", "16 MB", "64 MB", "256 MB", "4 GB", "Solid"}, nil)
 	blockSelect.SetSelected("Solid")
+	blockSelect.OnChanged = func(s string) {
+		setInfo("Determines how many files are compressed together. To extract one file, 7-Zip must decompress all files in the solid block. Under 'Non-Solid', each file is compressed separately resulting in fast extraction, but lower compression. Using a smaller solid block size (64 to 512 MB) is advisable when you need to frequently extract individual files from a large archive.")
+	}
 
 	// CPU Threads
 	numCPU := runtime.NumCPU()
@@ -199,19 +205,25 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	}
 	threadSelect := widget.NewSelect(threads, nil)
 	threadSelect.SetSelected(strconv.Itoa(numCPU))
-	threadSelect.OnChanged = func(s string) { setInfo(fmt.Sprintf("CPU Threads: Total available: %d", numCPU)) }
+	threadSelect.OnChanged = func(s string) { setInfo(fmt.Sprintf("CPU Threads: Total available = %d", numCPU)) }
 
 	// Simulated calculation based on dict size
 	memCompLabel := widget.NewLabel("~150 MB")
 	memDecompLabel := widget.NewLabel("~20 MB")
 	dictSelect.OnChanged = func(s string) {
 		memCompLabel.SetText("Depends on Dict & Threads")
-		setInfo("Dictionary Size: The larger it is, the more RAM required.")
+		setInfo("Dictionary Size: How much data is analyzed in memory for repetitions. The larger it is, higher the compression ratios and more the RAM required. Generally, 32MB-64MB is sufficient for most files, while 512MB+ is recommended for massive archives. Should be less than or equal to the total size of the files being compressed.")
 	}
 
 	// Update Mode
 	updateSelect := widget.NewSelect([]string{"Add and replace files", "Update and add files", "Freshen existing files", "Synchronize files"}, nil)
 	updateSelect.SetSelected("Add and replace files")
+	/* show this info OnChanged:
+	Add and Replace (Default): Adds all specified files to the archive. If a file exists, it overwrites it, regardless of whether it is newer or older than the archived version.
+	Update and Add: Adds new files and only updates files in the archive that are older than the corresponding files on the disk.
+	Freshen: Only updates files that already exist in the archive. It does not add new files to the archive.
+	Synchronize: Updates older files, adds new files, and deletes files from the archive that are no longer present on the disk.
+	*/
 
 	// SFX
 	sfxCheck := widget.NewCheck("Create SFX archive", func(b bool) { setInfo("SFX: Creates a self-extracting executable.") })
@@ -220,6 +232,9 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	// Split
 	splitEntry := widget.NewEntry()
 	splitEntry.PlaceHolder = "e.g., 10M, 100M, 2G"
+	splitEntry.OnChanged = func(s string) {
+		setInfo("Choose to split the archive in chunks of specified size.")
+	}
 
 	// Encryption Options
 	encCheck := widget.NewCheck("Enable Encryption", nil)
