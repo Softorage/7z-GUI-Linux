@@ -20,6 +20,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"fyne.io/fyne/v2/storage"
 )
 
 var (
@@ -464,7 +465,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		widget.NewFormItem("Update mode:", updateSelect),
 		widget.NewFormItem("Options:", container.NewVBox(sfxCheck, sharedCheck)),
 		widget.NewFormItem("Split to volumes:", splitEntry),
-		widget.NewFormItem("--- Encryption Options ---", encCheck),
+		widget.NewFormItem("Encryption Options -->", encCheck),
 		widget.NewFormItem("Password:", passEntry),
 		widget.NewFormItem("Confirm:", confirmEntry),
 		widget.NewFormItem("Enc. Settings:", container.NewHBox(showPassCheck, encNameCheck)),
@@ -494,6 +495,11 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 		d := dialog.NewFileOpen(func(uri fyne.URIReadCloser, err error) {
 			if err == nil && uri != nil {
 				srcEntry.SetText(uri.URI().Path())
+				// Get the parent folder URI and set it as default value for destination entry
+				parentURI, err := storage.Parent(uri.URI())
+				if err == nil {
+					destEntry.SetText(parentURI.Path())
+				}
 				uri.Close()
 			}
 		}, w)
@@ -527,9 +533,41 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 			return
 		}
 
-		args := []string{"x", srcEntry.Text, "-o" + destEntry.Text, "-bsp1", "-y"}
-		tabs.SelectIndex(2)
-		startOperation(args, "Extracting", w)
+		src := srcEntry.Text
+		dest := destEntry.Text
+		// Run check asynchronously to avoid blocking the Fyne UI loop
+		go func() {
+			setInfo("Checking archive...")
+
+			if isPasswordProtected(src) {
+				pwdEntry := widget.NewPasswordEntry()
+				pwdEntry.PlaceHolder = "Enter Password"
+
+				items := []*widget.FormItem{
+					widget.NewFormItem("Password:", pwdEntry),
+				}
+
+				d := dialog.NewForm("Password Required", "Extract", "Cancel", items, func(submit bool) {
+					if submit {
+						// Append the -p switch with the user's password
+						// Note: os/exec handles spaces safely automatically, no manual shell-escaping needed
+						args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwdEntry.Text}
+						tabs.SelectIndex(2)
+						startOperation(args, "Extracting", w)
+					} else {
+						setInfo("Extraction cancelled.")
+					}
+				}, w)
+				windowSize := w.Canvas().Size()
+				d.Resize(fyne.NewSize(windowSize.Width*0.8, d.MinSize().Height))
+				d.Show()
+			} else {
+				// Proceed normally if no password is required
+				args := []string{"x", src, "-o" + dest, "-bsp1", "-y"}
+				tabs.SelectIndex(2)
+				startOperation(args, "Extracting", w)
+			}
+		}()
 	})
 	extractBtn.Importance = widget.HighImportance
 
@@ -543,6 +581,35 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 		layout.NewSpacer(),
 		container.NewHBox(layout.NewSpacer(), extractBtn),
 	))
+}
+
+// isPasswordProtected tests if the archive requires a password for extraction.
+func isPasswordProtected(archive string) bool {
+	// Execute '7z l' (List) with a dummy password. This is fast and will reveal
+	// if the file is encrypted without extracting anything.
+	cmd := exec.Command("7z", "l", "-slt", archive, "-pDummyPassword_123456789")
+	out, err := cmd.CombinedOutput()
+
+	outStr := string(out)
+	lowerOut := strings.ToLower(outStr)
+
+	if err != nil {
+		// If the header itself is encrypted, 7-zip will fail to list files
+		// and output an error mentioning "wrong password" or "encrypted".
+		if strings.Contains(lowerOut, "wrong password") ||
+			strings.Contains(lowerOut, "encrypted archive") ||
+			strings.Contains(lowerOut, "error in encrypted file") {
+			return true
+		}
+	}
+
+	// For archives where headers are NOT encrypted but the files inside are,
+	// 7-zip will successfully list the contents. We check for the 'Encrypted = +' flag.
+	if strings.Contains(outStr, "\nEncrypted = +") {
+		return true
+	}
+
+	return false
 }
 
 func buildStatusTab(w fyne.Window) fyne.CanvasObject {
