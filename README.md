@@ -58,15 +58,16 @@ Please leave a star if you find it useful!
 
 | Description | Screenshot |
 | --- | --- |
-| Compress | ![Voltage Offsets](/dist/images/screenshots/v0.1.0/Compress.png) |
-| Extract | ![Power Limit](/dist/images/screenshots/v0.1.0/Extract.png) |
+| Compress | ![Voltage Offsets](/dist/images/screenshots/v0.1.2/Compress.png) |
+| Extract | ![Power Limit](/dist/images/screenshots/v0.1.2/Extract.png) |
+| Status | ![Power Limit](/dist/images/screenshots/v0.1.2/Status.png) |
 
 ## FAQ
 
 1. Do you know how to code? Do you use AI to develop this project? Is this vibe-coded?
 
-   Yes. I think, I may kinda know how to code. (-> Sanmay)
-   We may use AI when developing this project. If you find any issues, please report them to us. We will try to fix them as soon as possible.
+   Yes. I think, I may kinda know how to code. (-> Sanmay)  
+   We may use AI when developing this project. If you find any issues, please report them to us. We will try to fix them as soon as possible.  
    No.
 
 ## Credits
