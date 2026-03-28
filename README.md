@@ -20,7 +20,7 @@ Please leave a star if you find it useful!
 - [FAQ](#faq)
 - [Contributors](#contributors)
 - [Credits](#credits)
-- [Promo](#promo)
+- [Other tools](#other-tools)
 - [What is Softorage?](#what-is-softorage)
 - [License](#license)
 
@@ -75,7 +75,7 @@ Please leave a star if you find it useful!
 - p7zip
 - Softorage
 
-## Promo
+## Other tools
 
 *Looking for a throttlestop alternative for you Intel CPU on Linux? Try our other tool: [undervolt-go](https://github.com/Softorage/undervolt-go). It comes with all the risks of a system level utility, though.*
 
