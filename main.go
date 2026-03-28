@@ -18,10 +18,18 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"fyne.io/fyne/v2/storage"
 )
+
+type operationLog struct {
+	ID        int
+	File      string
+	OpType    string // e.g., "Extracting", "Compressing"
+	Status    string // e.g., "In Progress", "Completed", "Failed"
+	Timestamp string
+}
 
 var (
 	infoBar     *widget.Label
@@ -43,7 +51,21 @@ var (
 
 	statusTimer *time.Timer
 	statusMu    sync.Mutex
+
+	//historyData []operationLog
+	historyList *widget.List
 )
+
+// Set initial value for the default record under Operations History
+var historyData = []operationLog{
+	{
+		ID:        0,
+		File:      "System Status",
+		OpType:    "Initialized",
+		Status:    "Ready",
+		Timestamp: time.Now().Format("15:04:05"),
+	},
+}
 
 // setInfo updates the bottom info bar and sets a 6-second timer to clear it.
 func setInfo(text string) {
@@ -465,7 +487,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		widget.NewFormItem("Update mode:", updateSelect),
 		widget.NewFormItem("Options:", container.NewVBox(sfxCheck, sharedCheck)),
 		widget.NewFormItem("Split to volumes:", splitEntry),
-		widget.NewFormItem("Encryption Options -->", encCheck),
+		widget.NewFormItem("Encryption Options  →", encCheck),
 		widget.NewFormItem("Password:", passEntry),
 		widget.NewFormItem("Confirm:", confirmEntry),
 		widget.NewFormItem("Enc. Settings:", container.NewHBox(showPassCheck, encNameCheck)),
@@ -617,6 +639,43 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	statusLog.Wrapping = fyne.TextWrapWord
 	progressBar = widget.NewProgressBar()
 
+	// Initialize the History List
+	historyList = widget.NewList(
+		func() int {
+			return len(historyData)
+		},
+		func() fyne.CanvasObject {
+			// Template for each row: [Time] Operation: FileName - Status
+			return container.NewHBox(
+				widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Monospace: true}), // Time
+				widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),      // Type
+				widget.NewLabel(""), // File
+				layout.NewSpacer(),
+				widget.NewLabel(""), // Status
+			)
+		},
+		func(id widget.ListItemID, item fyne.CanvasObject) {
+			data := historyData[id]
+			objs := item.(*fyne.Container).Objects
+			objs[0].(*widget.Label).SetText("[" + data.Timestamp + "]")
+			objs[1].(*widget.Label).SetText(data.OpType + ":")
+			objs[2].(*widget.Label).SetText(data.File)
+
+			statusLbl := objs[4].(*widget.Label)
+			statusLbl.SetText(data.Status)
+
+			// Color coding status
+			if data.Status == "Completed" || data.Status == "Ready" {
+				statusLbl.Importance = widget.SuccessImportance
+			} else if data.Status == "Error" || data.Status == "Cancelled" {
+				statusLbl.Importance = widget.DangerImportance
+			} else {
+				statusLbl.Importance = widget.WarningImportance
+			}
+			statusLbl.Refresh()
+		},
+	)
+
 	pauseBtn = widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), func() {
 		stateMu.Lock()
 		defer stateMu.Unlock()
@@ -651,13 +710,27 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	})
 	cancelBtn.Disable()
 
-	return container.NewPadded(container.NewVBox(
-		widget.NewLabelWithStyle("Progress Statistics", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+	// Top section: Current Status
+	currentStatus := container.NewVBox(
+		widget.NewLabelWithStyle("Current Progress", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		progressBar,
 		statusLog,
-		layout.NewSpacer(),
 		container.NewHBox(layout.NewSpacer(), pauseBtn, cancelBtn),
-	))
+		widget.NewSeparator(),
+	)
+
+	// Bottom section: History
+	historySection := container.NewBorder(
+		widget.NewLabelWithStyle("Operation History", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		nil, nil, nil,
+		historyList,
+	)
+
+	// Use Split so user can resize the log area
+	split := container.NewVSplit(currentStatus, historySection)
+	split.Offset = 0.3 // Give current status 30% of space initially
+
+	return container.NewPadded(split)
 }
 
 // --- LOGIC MAPPER & EXECUTION ---
@@ -786,6 +859,24 @@ func build7zArgs(src, format string, level string, threads, update string, sfx b
 }
 
 func startOperation(args []string, mode string, w fyne.Window) {
+	fileName := "Unknown"
+	if len(args) > 1 {
+		fileName = filepath.Base(args[1]) // Get just the filename from path
+	}
+
+	stateMu.Lock()
+	logEntry := operationLog{
+		ID:        len(historyData),
+		File:      fileName,
+		OpType:    mode,
+		Status:    "Running...",
+		Timestamp: time.Now().Format("15:04:05"),
+	}
+	historyData = append([]operationLog{logEntry}, historyData...) // Prepend to show newest first
+	entryIndex := 0                                                // Since we prepend, it's always at the top
+	stateMu.Unlock()
+	historyList.Refresh()
+
 	currentCmd = exec.Command("7z", args...)
 
 	stdout, err := currentCmd.StdoutPipe()
@@ -882,6 +973,23 @@ func startOperation(args []string, mode string, w fyne.Window) {
 		}
 
 		err = currentCmd.Wait()
+
+		// Update History Status
+		stateMu.Lock()
+		isOperationRunning = false
+		currentCmd = nil
+
+		finalStatus := "Completed"
+		if err != nil {
+			if err.Error() == "signal: killed" {
+				finalStatus = "Cancelled"
+			} else {
+				finalStatus = "Error"
+			}
+		}
+		historyData[entryIndex].Status = finalStatus
+		stateMu.Unlock()
+		historyList.Refresh()
 
 		// Unlock the UI
 		stateMu.Lock()
