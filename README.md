@@ -1,8 +1,16 @@
 # 7z GUI Linux
 
-A GUI for 7-zip on Linux. Doesn't require any dependency to run.
+A GUI for 7-zip on Linux with all the advanced features that you are used to.
 
-Please star if you find it useful!
+Uses p7zip installed on your system as the backend. Doesn't require any other dependency to run.
+
+---
+
+Please leave a star if you find it useful!
+
+---
+
+**Note by dev:** The tool is tested by me for my personal use and works pretty nice. But it's still very early in development. If you find any issues, please let me know via [GitHub Issues](https://github.com/Softorage/7z-GUI-Linux/issues).
 
 ## How to use
 
@@ -11,21 +19,49 @@ Please star if you find it useful!
 3. Right click -> Properties -> Permissions -> Make executable
 4. Double click the file to open.
 
+### A few notes:
+
+- You need p7zip installed on your system to use this utility.
+- You will be prompted to install p7zip if you do already have it. In that case, you will be required to put your password. You DO NOT need to install it via 7z GUI Linux, and can install it on your own.
+- Apart from the one specific scenario discussed above (i.e., you not having p7zip already installed), you do not need sudo privilege to use 7z GUI Linux, and it advised that you run it normally (double-click), with least privileges.
+
 ## Features
 
-Offers similar GUI to the Windows counterpart.
+- Compress and Extract 
+- Supports:
+   - Compression level
+   - Dictionary size
+   - Word size
+   - Block size
+   - CPU threads
+   - Update mode
+   - SFX (self-extracting) archive (.exe)
+   - Compress shared files
+   - Split to volumes
+   - Encryption settings
+- Provides introductory information for various input options
+- Offers similar GUI to the Windows counterpart.
+
+## Screenshots
+
+| Description | Screenshot |
+| --- | --- |
+| Compress | ![Voltage Offsets](/dist/images/screenshots/v0.1.0/Compress.png) |
+| Extract | ![Power Limit](/dist/images/screenshots/v0.1.0/Extract.png) |
 
 ## FAQ
 
-1. Do you use AI to develop this project?
+1. Do you know how to code? Do you use AI to develop this project? Is this vibe-coded?
 
+   Yes. I think, I may kinda know how to code. (-> Sanmay)
    We may use AI when developing this project. If you find any issues, please report them to us. We will try to fix them as soon as possible.
+   No.
 
 ## Credits
 
-7-zip
-p7zip
-Softorage
+- 7-zip
+- p7zip
+- Softorage
 
 ## License
 
