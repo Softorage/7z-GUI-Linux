@@ -29,52 +29,75 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Ensures full history, including tags
+
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
         go-version: '1.24.1'
+        cache: true
+
     - name: Setup Pages
       uses: actions/configure-pages@v5
     # Extract the Git Version & Commit to define dynamic folder names
+
+    - name: Install Tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y upx-ucl
+        go install github.com/fyne-io/fyne-cross@latest # Use the fyne-cross tool
+
     - name: Set up Dynamic Folder Names
       run: |
         # Save to GITHUB_ENV so subsequent steps can use these variables
         echo "GIT_TAG=$(git describe --tags --always)" >> $GITHUB_ENV
-    - name: Prepare dependencies
+
+    - name: Cross-Compile, Optimize, and Compress
       run: |
-        sudo apt-get update
-        sudo apt-get install build-essential pkg-config libgl1-mesa-dev mesa-common-dev xorg-dev # add 'libglu1-mesa-dev freeglut3-dev' if needed
-        go mod tidy # Ensures all required dependencies are installed
-        echo "All required dependencies are installed"
-    - name: Build 7z-GUI-Linux
-      run: |
-        echo "Building 7z GUI Linux..."
-        go build -ldflags="-X 'main.version=${{ env.GIT_TAG }}'" -o 7z-GUI-Linux . # When building your application, pass the version from git tags using ldflags.
-        echo "Build complete!"
-    - name: Make compiled binary available
-      run: |
-        echo "Working on making the compiled binary available..."
-        mkdir "7z-GUI-Linux-${{ env.GIT_TAG }}" public
-        cp -r ./7z-GUI-Linux "./7z-GUI-Linux-${{ env.GIT_TAG }}/" # Copy the binary to the 7z-GUI-Linux directory
-        echo "Ready to deploy!"
-    - name: Compress the builds and make them available in 'public'
-      run: |
-        zip -r 7z-GUI-Linux-${{ env.GIT_TAG }}.zip "./7z-GUI-Linux-${{ env.GIT_TAG }}/" # Make a zip file of the latest build
-        cp -r 7z-GUI-Linux-${{ env.GIT_TAG }}.zip ./public/
-        echo "Compress complete and available in public directory!"
-        echo "Removing the now unused directories and archives..."
-        rm -r 7z-GUI-Linux-${{ env.GIT_TAG }}.zip "7z-GUI-Linux-${{ env.GIT_TAG }}"
-        echo "Removing complete!"
+        mkdir -p ./public
+        
+        # Define architectures to build
+        # Note: '386' is the Go name for x86 32-bit
+        archs=("amd64" "386" "arm64")
+
+        for arch in "${archs[@]}"; do
+          echo "Building for Linux $arch"
+          
+          # 1. Build using fyne-cross
+          # -ldflags "-s -w" removes debug info and symbol tables
+          fyne-cross linux \
+            --arch $arch \
+            --ldflags "-s -w -X 'main.version=${{ env.GIT_TAG }}'" \
+            --name 7z-GUI-Linux-$arch
+          
+          # 2. Path where fyne-cross puts the binary
+          BINARY_PATH="./fyne-cross/bin/linux-$arch/7z-GUI-Linux-$arch"
+          
+          # 3. Compress with UPX
+          # --ultra-brute gives the smallest possible size
+          echo "Compressing $arch binary..."
+          upx --ultra-brute "$BINARY_PATH"
+          
+          # 4. Package into Zip
+          ZIP_NAME="7z-GUI-Linux-${{ env.GIT_TAG }}-$arch.zip"
+          zip -j "./public/$ZIP_NAME" "$BINARY_PATH"
+          
+          echo "Finished $arch build: $ZIP_NAME"
+        done
+
     - name: Output the files structure into a JSON file
       run: |
-        # GitHub Actions' ubuntu-latest comes preinstalled with tree.
-        tree -J public > files.json
-        cp -r files.json ./public/
-        echo "JSON Manifest generated with the directory structure!"
+        cd public
+        tree -J . > files.json
+        echo "JSON Manifest generated!"
+
     - name: Make web pages available
       run: |
-        cp -r ./dist/pages/* ./public/ # Copy the web pages to the public directory
-        echo "All done!"
+        # Ensure dist/pages exists, or handle if it doesn't
+        if [ -d "./dist/pages" ]; then
+          cp -r ./dist/pages/* ./public/
+        fi
+        echo "Web assets ready!"
+
     - name: Upload artifact
       # upload artifact in the build stage, so that it is later on accessible in the deploy stage
       uses: actions/upload-pages-artifact@v3
