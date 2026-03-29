@@ -66,7 +66,7 @@ jobs:
           # -ldflags "-s -w" removes debug info and symbol tables
           fyne-cross linux \
             --arch $arch \
-            --ldflags "-s -w -X 'main.version=${{ env.GIT_TAG }}'" \
+            --ldflags="-s -w -X 'main.version=${{ env.GIT_TAG }}'" \
             --name 7z-GUI-Linux-$arch
           
           # 2. Path where fyne-cross puts the binary
