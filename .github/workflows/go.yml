@@ -66,22 +66,26 @@ jobs:
           
           # 1. Build using fyne-cross
           # -ldflags "-s -w" removes debug info and symbol tables
+          # -env GOTOOLCHAIN=auto tells the Go tool inside the container that it is allowed to automatically download the required toolchain
           fyne-cross linux \
             --arch $arch \
+            -env GOTOOLCHAIN=auto \
             --ldflags="-s -w -X main.version=${{ env.GIT_TAG }}" \
             --name 7z-GUI-Linux-$arch
           
           # 2. Path where fyne-cross puts the binary
-          BINARY_PATH="./fyne-cross/bin/linux-$arch/7z-GUI-Linux-$arch"
+          BINARY_PATH="./fyne-cross/dist/linux-$arch/7z-GUI-Linux-$arch.tar.xz"
           
           # 3. Compress with UPX
           # --ultra-brute gives the smallest possible size
-          echo "Compressing $arch binary..."
-          upx --ultra-brute "$BINARY_PATH"
+          #echo "Compressing $arch binary..."
+          #upx --ultra-brute "$BINARY_PATH"
           
           # 4. Package into Zip
-          ZIP_NAME="7z-GUI-Linux-${{ env.GIT_TAG }}-$arch.zip"
-          zip -j "./public/$ZIP_NAME" "$BINARY_PATH"
+          #ZIP_NAME="7z-GUI-Linux-${{ env.GIT_TAG }}-$arch.zip"
+          #zip -j "./public/$ZIP_NAME" "$BINARY_PATH"
+
+          cp -r "$BINARY_PATH" ./public/
           
           echo "Finished $arch build: $ZIP_NAME"
         done
