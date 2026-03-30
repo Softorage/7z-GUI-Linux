@@ -40,9 +40,20 @@
     </p>
     <ol type="1">
       <li>Download latest release from below.</li>
-      <li>Extract the archive. You should now have the `7z-GUI-Linux` file.</li>
-      <li>Simply make `7z-GUI-Linux` executable => right click `7z-GUI-Linux`, go to Properties, and in the Permissions tab, tick 'Make executable'</li>
-      <li>Double click `7z-GUI-Linux` to launch!</li>
+      <li>Extract the archive.</li>
+      <li>If you don't want to install:
+        <ol>
+          <li>Having extracted, you should now have the `7z-GUI-Linux` file under usr/local/bin.</li>
+          <li>Simply make `7z-GUI-Linux` executable => right click `7z-GUI-Linux`, go to Properties, and in the Permissions tab, tick 'Make executable'.</li>
+          <li>Double click `7z-GUI-Linux` to launch!</li>
+        </ol>
+      </li>
+      <li>If you want to install:
+        <ol>
+          <li>In the the extracted folder (where usr and Makefile is present), open terminal, and run <code>make user-install</code></li>
+          <li>To uninstall, in the the extracted folder (where usr and Makefile is present), open terminal, and run <code>make user-uninstall</code></li>
+        </ol>
+      </li>
     </ol>
   </header>
   <main>

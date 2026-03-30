@@ -28,8 +28,14 @@ Please leave a star if you find it useful!
 
 1. Download from [the official website](https://softorage.github.io/7z-GUI-Linux/).
 2. Extract.
-3. Right click -> Properties -> Permissions -> Make executable
-4. Double click the file to open.
+3. If you want to use it as a portable tool without installation:
+   1. Having extracted, you should now have the `7z-GUI-Linux` file under usr/local/bin.
+   2. Simply make `7z-GUI-Linux` executable => right click `7z-GUI-Linux`, go to Properties, and in the Permissions tab, tick 'Make executable'.
+   3. Double click `7z-GUI-Linux` to launch!
+4. If you would like to install the tool in userspace (Recommended over system install):
+   1. In the the extracted folder (where usr and Makefile is present), open terminal, and run `make user-install`.
+   2. To uninstall, in the the extracted folder (where usr and Makefile is present), open terminal, and run `make user-uninstall`.
+5. If you would like know how to do a sytem install, run `make`.
 
 ### A few notes:
 
