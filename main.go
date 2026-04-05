@@ -842,38 +842,41 @@ func build7zArgs(src, format string, level string, method string, dictSize strin
 	args := []string{cmdAction, dest, src, "-bsp1", "-t" + format}
 	args = append(args, updateSwitches...)
 
-	// Only apply compression level if the format supports it (tar does not)
+	// Only apply compression settings if the format supports it (tar does not)
 	if format != "tar" {
 		lvlMap := map[string]string{"Store": "0", "Fastest": "1", "Fast": "3", "Normal": "5", "Maximum": "7", "Ultra": "9"}
 		args = append(args, "-mx="+lvlMap[level])
 
-		// Apply Compression Method
-		if method != "" {
-			if format == "zip" {
-				args = append(args, "-mm="+method)
-			} else if format == "7z" || format == "wim" {
-				// 7z uses -m0 switch to assign a generic method
-				args = append(args, "-m0="+method)
-			}
-		}
-
-		// Dictionary and Word size are only reliably scalable across 7z and xz.
-		// Exposing large dictionary values to deflaters (zip/gzip) will prompt "Unsupported Method" errors in 7z CLI
-		if format == "7z" || format == "xz" {
-			dictMap := map[string]string{
-				"64 KB":  "64k",
-				"1 MB":   "1m",
-				"16 MB":  "16m",
-				"32 MB":  "32m",
-				"64 MB":  "64m",
-				"128 MB": "128m",
-			}
-			if d, ok := dictMap[dictSize]; ok {
-				args = append(args, "-md="+d)
+		// ONLY apply Method, Dictionary, and Word Size if we are ACTUALLY compressing
+		if level != "Store" {
+			// Apply Compression Method
+			if method != "" {
+				if format == "zip" {
+					args = append(args, "-mm="+method)
+				} else if format == "7z" || format == "wim" {
+					// 7z uses -m0 switch to assign a generic method
+					args = append(args, "-m0="+method)
+				}
 			}
 
-			if wordSize != "" {
-				args = append(args, "-mfb="+wordSize)
+			// Dictionary and Word size are only reliably scalable across 7z and xz.
+			// Exposing large dictionary values to deflaters (zip/gzip) will prompt "Unsupported Method" errors in 7z CLI
+			if format == "7z" || format == "xz" {
+				dictMap := map[string]string{
+					"64 KB":  "64k",
+					"1 MB":   "1m",
+					"16 MB":  "16m",
+					"32 MB":  "32m",
+					"64 MB":  "64m",
+					"128 MB": "128m",
+				}
+				if d, ok := dictMap[dictSize]; ok {
+					args = append(args, "-md="+d)
+				}
+
+				if wordSize != "" {
+					args = append(args, "-mfb="+wordSize)
+				}
 			}
 		}
 	}
