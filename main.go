@@ -847,7 +847,7 @@ func build7zArgs(src, format string, level string, method string, dictSize strin
 		lvlMap := map[string]string{"Store": "0", "Fastest": "1", "Fast": "3", "Normal": "5", "Maximum": "7", "Ultra": "9"}
 		args = append(args, "-mx="+lvlMap[level])
 
-		// ONLY apply Method, Dictionary, and Word Size if we are ACTUALLY compressing
+		// Only apply Method, Dictionary, and Word Size if we are compressing
 		if level != "Store" {
 			// Apply Compression Method
 			if method != "" {
