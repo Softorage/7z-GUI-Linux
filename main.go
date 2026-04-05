@@ -413,7 +413,6 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			methodSelect.SetSelected("LZMA2")
 			methodSelect.Disable()
 		}
-		// methodSelect.Refresh() // uncomment if necessary
 
 		// Selectively disable based on format limitations
 		switch s {
@@ -511,8 +510,8 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			sharedCheck.Checked,
 		)
 
-		tabs.SelectIndex(2) // Switch to Status tab
-		startOperation(args, "Compressing", w)
+		tabs.SelectIndex(2)                         // Switch to Status tab
+		startOperation(args, "Compressing", w, nil) // Passing nil for onSuccess
 	})
 	archiveBtn.Importance = widget.HighImportance
 
@@ -556,6 +555,11 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 	srcEntry := widget.NewEntry()
 	destEntry := widget.NewEntry()
+
+	autoOpenCheck := widget.NewCheck("Auto-open folder after extraction", nil)
+	autoOpenCheck.OnChanged = func(_ bool) {
+		setInfo("Automatically open the destination folder when extraction finishes.")
+	}
 
 	srcBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
 		d := dialog.NewFileOpen(func(uri fyne.URIReadCloser, err error) {
@@ -601,9 +605,19 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 
 		src := srcEntry.Text
 		dest := destEntry.Text
+		autoOpenBool := autoOpenCheck.Checked
+
 		// Run check asynchronously to avoid blocking the Fyne UI loop
 		go func() {
 			setInfo("Checking archive...")
+
+			var onSuccess func()
+			if autoOpenBool {
+				onSuccess = func() {
+					// Utilizes xdg-open to launch the system's default file manager on Linux
+					exec.Command("xdg-open", dest).Start()
+				}
+			}
 
 			if isPasswordProtected(src) {
 				pwdEntry := widget.NewPasswordEntry()
@@ -619,7 +633,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 						// Note: os/exec handles spaces safely automatically, no manual shell-escaping needed
 						args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwdEntry.Text}
 						tabs.SelectIndex(2)
-						startOperation(args, "Extracting", w)
+						startOperation(args, "Extracting", w, onSuccess)
 					} else {
 						setInfo("Extraction cancelled.")
 					}
@@ -631,7 +645,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 				// Proceed normally if no password is required
 				args := []string{"x", src, "-o" + dest, "-bsp1", "-y"}
 				tabs.SelectIndex(2)
-				startOperation(args, "Extracting", w)
+				startOperation(args, "Extracting", w, onSuccess)
 			}
 		}()
 	})
@@ -640,6 +654,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 	form := widget.NewForm(
 		widget.NewFormItem("Archive File:", container.NewBorder(nil, nil, nil, srcBtn, srcEntry)),
 		widget.NewFormItem("Extract To:", container.NewBorder(nil, nil, nil, destBtn, destEntry)),
+		widget.NewFormItem("Options:", autoOpenCheck),
 	)
 
 	return container.NewPadded(container.NewVBox(
@@ -912,7 +927,7 @@ func build7zArgs(src, format string, level string, method string, threads, updat
 	return args
 }
 
-func startOperation(args []string, mode string, w fyne.Window) {
+func startOperation(args []string, mode string, w fyne.Window, onSuccess func()) {
 	fileName := "Unknown"
 	if len(args) > 1 {
 		fileName = filepath.Base(args[1]) // Get just the filename from path
@@ -1066,6 +1081,11 @@ func startOperation(args []string, mode string, w fyne.Window) {
 			progressBar.SetValue(1.0)
 			setFinalStatus("Operation completed successfully!")
 			setInfo("Done.")
+
+			// Execute the onSuccess callback upon completion, if requested
+			if onSuccess != nil {
+				onSuccess()
+			}
 		}
 	}()
 }
