@@ -52,7 +52,6 @@ var (
 	statusTimer *time.Timer
 	statusMu    sync.Mutex
 
-	//historyData []operationLog
 	historyList *widget.List
 )
 
@@ -249,6 +248,13 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		setInfo("Compression Level: Higher levels offer better compression but use more memory.")
 	}
 
+	// Compression Method
+	methodSelect := widget.NewSelect([]string{"LZMA2", "LZMA", "PPMd", "BZip2", "Deflate", "Copy"}, nil)
+	methodSelect.SetSelected("LZMA2")
+	methodSelect.OnChanged = func(_ string) {
+		setInfo("Compression Method: Core algorithm used to compress data. LZMA2 is standard for 7z.")
+	}
+
 	// Dictionary, Word, Block Sizes
 	dictSelect := widget.NewSelect([]string{"64 KB", "1 MB", "16 MB", "32 MB", "64 MB", "128 MB"}, nil)
 	dictSelect.SetSelected("16 MB")
@@ -359,6 +365,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 		// Reset all fields to Enabled as a baseline
 		levelSelect.Enable()
+		methodSelect.Enable()
 		dictSelect.Enable()
 		wordSelect.Enable()
 		blockSelect.Enable()
@@ -372,6 +379,41 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			confirmEntry.Enable()
 			encNameCheck.Enable()
 		}
+
+		/*
+		* Keeping two separate switches for better readability:
+		*   1 for compression method, and
+		*   1 for others
+		 */
+		// Update Method options based on format
+		switch s {
+		case "7z":
+			methodSelect.Options = []string{"LZMA2", "LZMA", "PPMd", "BZip2", "Deflate", "Copy"}
+			methodSelect.SetSelected("LZMA2")
+		case "zip":
+			methodSelect.Options = []string{"Deflate", "Deflate64", "BZip2", "LZMA", "PPMd", "Copy"}
+			methodSelect.SetSelected("Deflate")
+		case "wim":
+			methodSelect.Options = []string{"LZX", "LZMS", "Copy"}
+			methodSelect.SetSelected("LZX")
+		case "tar":
+			methodSelect.Options = []string{"Copy"}
+			methodSelect.SetSelected("Copy")
+			methodSelect.Disable()
+		case "gzip":
+			methodSelect.Options = []string{"Deflate"}
+			methodSelect.SetSelected("Deflate")
+			methodSelect.Disable()
+		case "bzip2":
+			methodSelect.Options = []string{"BZip2"}
+			methodSelect.SetSelected("BZip2")
+			methodSelect.Disable()
+		case "xz":
+			methodSelect.Options = []string{"LZMA2"}
+			methodSelect.SetSelected("LZMA2")
+			methodSelect.Disable()
+		}
+		// methodSelect.Refresh() // uncomment if necessary
 
 		// Selectively disable based on format limitations
 		switch s {
@@ -455,6 +497,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			srcEntry.Text,
 			formatSelect.Selected,
 			levelSelect.Selected,
+			methodSelect.Selected,
 			threadSelect.Selected,
 			updateSelect.Selected,
 			sfxCheck.Checked,
@@ -478,6 +521,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		widget.NewFormItem("Source:", container.NewBorder(nil, nil, nil, browseBtns, srcEntry)),
 		widget.NewFormItem("Archive format:", formatSelect),
 		widget.NewFormItem("Compression level:", levelSelect),
+		widget.NewFormItem("Compression method:", methodSelect),
 		widget.NewFormItem("Dictionary size:", dictSelect),
 		widget.NewFormItem("Word size:", wordSelect),
 		widget.NewFormItem("Solid Block size:", blockSelect),
@@ -735,7 +779,7 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 
 // --- LOGIC MAPPER & EXECUTION ---
 
-func build7zArgs(src, format string, level string, threads, update string, sfx bool, enc bool, pass string, encName bool, split string, dictSize string, wordSize, blockSize string, shared bool) []string {
+func build7zArgs(src, format string, level string, method string, threads, update string, sfx bool, enc bool, pass string, encName bool, split string, dictSize string, wordSize, blockSize string, shared bool) []string {
 
 	// Standardize extensions for common formats mapped by 7-Zip
 	extMap := map[string]string{
@@ -785,6 +829,16 @@ func build7zArgs(src, format string, level string, threads, update string, sfx b
 	if format != "tar" {
 		lvlMap := map[string]string{"Store": "0", "Fastest": "1", "Fast": "3", "Normal": "5", "Maximum": "7", "Ultra": "9"}
 		args = append(args, "-mx="+lvlMap[level])
+
+		// Apply Compression Method
+		if method != "" {
+			if format == "zip" {
+				args = append(args, "-mm="+method)
+			} else if format == "7z" || format == "wim" {
+				// 7z uses -m0 switch to assign a generic method
+				args = append(args, "-m0="+method)
+			}
+		}
 
 		// Dictionary and Word size are only reliably scalable across 7z and xz.
 		// Exposing large dictionary values to deflaters (zip/gzip) will prompt "Unsupported Method" errors in 7z CLI
