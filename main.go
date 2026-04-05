@@ -497,17 +497,17 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			formatSelect.Selected,
 			levelSelect.Selected,
 			methodSelect.Selected,
-			threadSelect.Selected,
-			updateSelect.Selected,
-			sfxCheck.Checked,
-			encCheck.Checked,
-			passEntry.Text,
-			encNameCheck.Checked,
-			splitEntry.Text,
 			dictSelect.Selected,
 			wordSelect.Selected,
 			blockSelect.Selected,
+			threadSelect.Selected,
+			updateSelect.Selected,
+			sfxCheck.Checked,
 			sharedCheck.Checked,
+			splitEntry.Text,
+			encCheck.Checked,
+			passEntry.Text,
+			encNameCheck.Checked,
 		)
 
 		tabs.SelectIndex(2)                         // Switch to Status tab
@@ -794,7 +794,7 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 
 // --- LOGIC MAPPER & EXECUTION ---
 
-func build7zArgs(src, format string, level string, method string, threads, update string, sfx bool, enc bool, pass string, encName bool, split string, dictSize string, wordSize, blockSize string, shared bool) []string {
+func build7zArgs(src, format string, level string, method string, dictSize string, wordSize, blockSize string, threads, update string, sfx bool, shared bool, split string, enc bool, pass string, encName bool) []string {
 
 	// Standardize extensions for common formats mapped by 7-Zip
 	extMap := map[string]string{
