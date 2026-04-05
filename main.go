@@ -510,8 +510,10 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			encNameCheck.Checked,
 		)
 
-		tabs.SelectIndex(2)                         // Switch to Status tab
-		startOperation(args, "Compressing", w, nil) // Passing nil for onSuccess
+		// Switch to Status tab
+		tabs.SelectIndex(2)
+		// Passing arguments as args, title as "Compressing", window context as w, and nil for onSuccess callback
+		startOperation(args, "Compressing", w, nil)
 	})
 	archiveBtn.Importance = widget.HighImportance
 
