@@ -66,6 +66,8 @@ var historyData = []operationLog{
 	},
 }
 
+var root7zCmd string = "7z"
+
 // setInfo updates the bottom info bar and sets a 6-second timer to clear it.
 func setInfo(text string) {
 	infoMu.Lock()
@@ -162,7 +164,7 @@ func main() {
 }
 
 func checkDependencies(w fyne.Window) {
-	_, err := exec.LookPath("7z")
+	_, err := exec.LookPath(root7zCmd)
 	if err != nil {
 		dialog.ShowConfirm("7-Zip Not Found",
 			"The '7z' command was not found.\nWould you like to install it using your system's package manager?\n(This will prompt for root password)",
@@ -279,6 +281,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	threadSelect.SetSelected(strconv.Itoa(numCPU))
 	threadSelect.OnChanged = func(_ string) { setInfo(fmt.Sprintf("CPU Threads: Total available = %d", numCPU)) }
 
+	/*
 	// Simulated calculation based on dict size
 	memCompLabel := widget.NewLabel("~150 MB")
 	memDecompLabel := widget.NewLabel("~20 MB")
@@ -287,6 +290,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		memDecompLabel.SetText("Depends on Dict")
 		setInfo("Dictionary Size: How much data is analyzed in memory for repetitions. The larger it is, higher the compression ratios and more the RAM required. Generally, 32MB-64MB is sufficient for most files, while 512MB+ is recommended for massive archives. Should be less than or equal to the total size of the files being compressed.")
 	}
+		*/
 
 	// Update Mode
 	updateSelect := widget.NewSelect([]string{"Add and replace files", "Update and add files", "Freshen existing files", "Synchronize files"}, nil)
@@ -527,8 +531,10 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		widget.NewFormItem("Word size:", wordSelect),
 		widget.NewFormItem("Solid Block size:", blockSelect),
 		widget.NewFormItem("CPU Threads:", threadSelect),
+		/*
 		widget.NewFormItem("Memory Compressing:", memCompLabel),
 		widget.NewFormItem("Memory Decompressing:", memDecompLabel),
+		*/
 		widget.NewFormItem("Update mode:", updateSelect),
 		widget.NewFormItem("Options:", container.NewVBox(sfxCheck, sharedCheck)),
 		widget.NewFormItem("Split to volumes:", splitEntry),
@@ -563,14 +569,44 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 		setInfo("Automatically open the destination folder when extraction finishes.")
 	}
 
+	createSubfolderCheck := widget.NewCheck("Extract to sub-folder", nil)
+	createSubfolderCheck.SetChecked(true)
+	createSubfolderCheck.OnChanged = func(checked bool) {
+		setInfo("Extract into a new folder named after the archive.")
+	}
+
+	updateDestBtn := widget.NewButton("Update Destination", func() {
+		if srcEntry.Text == "" {
+			return
+		}
+		parentPath := filepath.Dir(srcEntry.Text)
+		if createSubfolderCheck.Checked {
+			baseName := strings.TrimSuffix(filepath.Base(srcEntry.Text), filepath.Ext(srcEntry.Text))
+			destEntry.SetText(filepath.Join(parentPath, baseName))
+		} else {
+			destEntry.SetText(parentPath)
+		}
+	})
+
 	srcBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
 		d := dialog.NewFileOpen(func(uri fyne.URIReadCloser, err error) {
 			if err == nil && uri != nil {
-				srcEntry.SetText(uri.URI().Path())
+
+				srcPath := uri.URI().Path()
+				srcEntry.SetText(srcPath)
+
 				// Get the parent folder URI and set it as default value for destination entry
 				parentURI, err := storage.Parent(uri.URI())
 				if err == nil {
-					destEntry.SetText(parentURI.Path())
+
+					destPath := parentURI.Path()
+
+					if createSubfolderCheck.Checked {
+						baseName := strings.TrimSuffix(uri.URI().Name(), uri.URI().Extension())
+						destPath = filepath.Join(destPath, baseName)
+					}
+					destEntry.SetText(destPath)
+
 				}
 				uri.Close()
 			}
@@ -656,7 +692,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 	form := widget.NewForm(
 		widget.NewFormItem("Archive File:", container.NewBorder(nil, nil, nil, srcBtn, srcEntry)),
 		widget.NewFormItem("Extract To:", container.NewBorder(nil, nil, nil, destBtn, destEntry)),
-		widget.NewFormItem("Options:", autoOpenCheck),
+		widget.NewFormItem("Options:", container.NewVBox(autoOpenCheck, container.NewHBox(createSubfolderCheck, updateDestBtn))),
 	)
 
 	return container.NewPadded(container.NewVBox(
@@ -670,7 +706,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 func isPasswordProtected(archive string) bool {
 	// Execute '7z l' (List) with a dummy password. This is fast and will reveal
 	// if the file is encrypted without extracting anything.
-	cmd := exec.Command("7z", "l", "-slt", archive, "-pDummyPassword_123456789")
+	cmd := exec.Command(root7zCmd, "l", "-slt", archive, "-pDummyPassword_123456789")
 	out, err := cmd.CombinedOutput()
 
 	outStr := string(out)
@@ -951,7 +987,7 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 	stateMu.Unlock()
 	historyList.Refresh()
 
-	currentCmd = exec.Command("7z", args...)
+	currentCmd = exec.Command(root7zCmd, args...)
 
 	stdout, err := currentCmd.StdoutPipe()
 	if err != nil {
