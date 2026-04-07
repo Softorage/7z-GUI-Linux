@@ -117,6 +117,7 @@ func setFinalStatus(text string) {
 
 func main() {
 	a := app.New()
+	a.SetIcon(resourceIconPng)
 	w := a.NewWindow("7-Zip GUI for Linux")
 	w.Resize(fyne.NewSize(800, 650))
 
