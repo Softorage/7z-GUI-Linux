@@ -93,8 +93,8 @@ jobs:
 
     - name: Output the files structure into a JSON file
       run: |
-        cd public
-        tree -J . > files.json
+        tree -J public > files.json
+        cp -r files.json ./public/
         echo "JSON Manifest generated!"
 
     - name: Make web pages available
