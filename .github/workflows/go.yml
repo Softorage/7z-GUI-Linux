@@ -75,7 +75,7 @@ jobs:
             --name 7z-GUI-Linux-$arch-${{ env.GIT_TAG }}
           
           # 2. Path where fyne-cross puts the binary
-          BINARY_PATH="./fyne-cross/dist/linux-$arch/7z-GUI-Linux-$arch.tar.xz"
+          BINARY_PATH="./fyne-cross/dist/linux-$arch/7z-GUI-Linux-$arch-${{ env.GIT_TAG }}.tar.xz"
           
           # 3. Compress with UPX
           # --ultra-brute gives the smallest possible size
