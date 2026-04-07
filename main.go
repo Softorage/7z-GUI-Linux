@@ -237,6 +237,26 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	browseBtns := container.NewHBox(browseFileBtn, browseFolderBtn)
 
+	// Custom Archive Name Checkbox and Entry
+	customNameEntry := widget.NewEntry()
+	customNameEntry.PlaceHolder = "Enter custom archive name (without extension)"
+	customNameEntry.Disable()
+
+	customNameCheck := widget.NewCheck("Custom Name", nil)
+	customNameCheck.OnChanged = func(checked bool) {
+		if checked {
+			customNameEntry.Enable()
+			setInfo("Specify a custom name for the resulting archive.")
+		} else {
+			customNameEntry.SetText("")
+			customNameEntry.Disable()
+			setInfo("Using default archive name.")
+		}
+	}
+
+	// Group the Custom Name Checkbox and text entry on a single line
+	customNameContainer := container.NewBorder(nil, nil, customNameCheck, nil, customNameEntry)
+
 	// Declare the widgets, set default state, and the info to display on change
 	// Format
 	formatSelect := widget.NewSelect([]string{"7z", "xz", "bzip2", "gzip", "tar", "zip", "wim"}, nil)
@@ -481,6 +501,12 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			return
 		}
 
+		// Ensure custom name is provided if the checkbox is checked
+		if customNameCheck.Checked && strings.TrimSpace(customNameEntry.Text) == "" {
+			dialog.ShowError(fmt.Errorf("please enter a custom archive name or uncheck the box"), w)
+			return
+		}
+
 		// Catch folder selection on single-stream formats
 		fInfo, err := os.Stat(srcEntry.Text)
 		if err == nil && fInfo.IsDir() {
@@ -491,13 +517,20 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		}
 
 		if encCheck.Checked && passEntry.Text != confirmEntry.Text {
-			dialog.ShowError(fmt.Errorf("passwords do not match"), w)
+			dialog.ShowError(fmt.Errorf("passwords under encryption settings do not match"), w)
 			return
+		}
+
+		// Extract custom name if checked
+		customName := ""
+		if customNameCheck.Checked {
+			customName = strings.TrimSpace(customNameEntry.Text)
 		}
 
 		// Map options to 7z CLI
 		args := build7zArgs(
 			srcEntry.Text,
+			customName,
 			formatSelect.Selected,
 			levelSelect.Selected,
 			methodSelect.Selected,
@@ -524,6 +557,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	// Form Layout
 	form := widget.NewForm(
 		widget.NewFormItem("Source:", container.NewBorder(nil, nil, nil, browseBtns, srcEntry)),
+		widget.NewFormItem("", customNameContainer),
 		widget.NewFormItem("Archive format:", formatSelect),
 		widget.NewFormItem("Compression level:", levelSelect),
 		widget.NewFormItem("Compression method:", methodSelect),
@@ -832,7 +866,7 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 
 // --- LOGIC MAPPER & EXECUTION ---
 
-func build7zArgs(src, format string, level string, method string, dictSize string, wordSize, blockSize string, threads, update string, sfx bool, shared bool, split string, enc bool, pass string, encName bool) []string {
+func build7zArgs(src, customName string, format string, level string, method string, dictSize string, wordSize, blockSize string, threads, update string, sfx bool, shared bool, split string, enc bool, pass string, encName bool) []string {
 
 	// Standardize extensions for common formats mapped by 7-Zip
 	extMap := map[string]string{
@@ -845,7 +879,13 @@ func build7zArgs(src, format string, level string, method string, dictSize strin
 		"wim":   ".wim",
 	}
 
-	base := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
+	var base string
+	if customName != "" {
+		base = customName
+	} else {
+		base = strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
+	}
+
 	ext, ok := extMap[format]
 	if !ok {
 		ext = "." + format
