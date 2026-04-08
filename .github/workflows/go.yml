@@ -67,8 +67,7 @@ jobs:
           # Use compile instead of linux
           # -ldflags "-s -w" removes debug info and symbol tables
           # -env GOTOOLCHAIN=auto tells the Go tool inside the container that it is allowed to automatically download the required toolchain
-          fyne-cross compile \
-            --os linux \
+          fyne-cross linux \
             --arch ${arch} \
             -env GOTOOLCHAIN=auto \
             --icon "dist/release/icon.png" \
