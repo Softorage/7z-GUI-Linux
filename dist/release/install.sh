@@ -7,6 +7,8 @@ NAME="7z-GUI-Linux"
 EXEC="7z-GUI-Linux"
 ICON="7z-GUI-Linux.png"
 
+DESKTOP_FOLDER=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
+
 # Detect paths
 if [ "$EUID" -ne 0 ]; then
     echo "Staging for current user..."
@@ -36,6 +38,19 @@ install -Dm 644 "$NAME.desktop" "$APP_DIR/$NAME.desktop"
 # Fix the Exec path inside the .desktop file for local install
 if [ "$EUID" -ne 0 ]; then
     sed -i "s|Exec=$EXEC|Exec=$INTERNAL_BIN_PATH|g" "$APP_DIR/$NAME.desktop"
+fi
+
+# get the .desktop on desktop
+if [ -d "$DESKTOP_FOLDER" ]; then
+    echo "Adding launcher to Desktop..."
+    # Copy the already-modified desktop file from APP_DIR to the Desktop
+    cp "$APP_DIR/$NAME.desktop" "$DESKTOP_FOLDER/"
+    # Desktop files on the actual desktop MUST be executable to be "trusted" by GNOME/KDE
+    chmod +x "$DESKTOP_FOLDER/$NAME.desktop"
+    # If running as root (via sudo), make sure the user owns the desktop file
+    if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+        chown "$SUDO_USER:" "$DESKTOP_FOLDER/$NAME.desktop"
+    fi
 fi
 
 echo "Installation complete!"
