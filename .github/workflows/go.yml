@@ -56,39 +56,60 @@ jobs:
     - name: Cross-Compile, Optimize, and Compress
       run: |
         mkdir -p ./public
+
+        NAME="7z-GUI-Linux"
         
-        # Define architectures to build
-        # Note: '386' is the Go name for x86 32-bit
         archs=("amd64" "386" "arm64")
 
         for arch in "${archs[@]}"; do
-          echo "Building for Linux $arch"
-          
-          # 1. Build using fyne-cross
+          echo "Building for Linux ${arch}"
+                    
+          # Use compile instead of linux
           # -ldflags "-s -w" removes debug info and symbol tables
           # -env GOTOOLCHAIN=auto tells the Go tool inside the container that it is allowed to automatically download the required toolchain
-          fyne-cross linux \
-            --arch $arch \
+          fyne-cross compile \
+            --os linux \
+            --arch ${arch} \
             -env GOTOOLCHAIN=auto \
-            --icon "dist/script/icon.png" \
+            --icon "dist/release/icon.png" \
             --ldflags="-s -w -X main.version=${{ env.GIT_TAG }}" \
-            --name 7z-GUI-Linux-$arch-${{ env.GIT_TAG }}
+            --name "${NAME}"
           
-          # 2. Path where fyne-cross puts the binary
-          BINARY_PATH="./fyne-cross/dist/linux-$arch/7z-GUI-Linux-$arch-${{ env.GIT_TAG }}.tar.xz"
-          
-          # 3. Compress with UPX
-          # --ultra-brute gives the smallest possible size
-          #echo "Compressing $arch binary..."
-          #upx --ultra-brute "$BINARY_PATH"
-          
-          # 4. Package into Zip
-          #ZIP_NAME="7z-GUI-Linux-${{ env.GIT_TAG }}-$arch.zip"
-          #zip -j "./public/$ZIP_NAME" "$BINARY_PATH"
+          RAW_BINARY="./fyne-cross/bin/linux-${arch}/${NAME}"
 
-          cp -r "$BINARY_PATH" ./public/
+          # Safety check: Ensure binary exists before proceeding
+          if [ ! -f "${RAW_BINARY}" ]; then
+            echo "Error: Binary for ${arch} not found at ${RAW_BINARY}"
+            exit 1
+          fi
           
-          echo "Finished $arch build: $ZIP_NAME"
+          echo "Compressing ${arch} binary with UPX..."
+          upx -9 "${RAW_BINARY}"
+
+          # 2. Setup Staging Area
+          STAGING_DIR="./staging"
+          rm -rf "${STAGING_DIR}"
+          mkdir -p "${STAGING_DIR}"
+          
+          # Copy files
+          cp "${RAW_BINARY}" "${STAGING_DIR}/"
+          cp ./dist/release/install.sh "${STAGING_DIR}/" || true
+          cp ./dist/release/update.sh "${STAGING_DIR}/" || true
+          cp ./dist/release/uninstall.sh "${STAGING_DIR}/" || true
+          cp ./dist/release/icon.png "${STAGING_DIR}/${NAME}.png" || true
+          cp ./dist/release/7z-GUI-Linux.desktop "${STAGING_DIR}/" || true
+
+          # Create Archive
+          ZIP_NAME="${NAME}-${arch}-${{ env.GIT_TAG }}.zip"
+          echo "Zipping to ${ZIP_NAME}..."
+          
+          # zip -j ignores folders, putting everything at the root of the zip
+          zip -j "./public/${ZIP_NAME}" "${STAGING_DIR}"/*
+
+          # Cleanup for next iteration
+          echo "Cleaning up ${arch} files..."
+          rm -rf "${STAGING_DIR}"
+          rm -rf "./fyne-cross/bin/linux-${arch}" 
         done
 
     - name: Output the files structure into a JSON file

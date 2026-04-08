@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=7z-GUI-Linux
+Comment=7-zip frontend, user friendly and powerful with all the features that you are used to.
+Exec=7z-GUI-Linux
+Icon=7z-GUI-Linux
+Terminal=false
+Keywords=7zip;7z;7-zip;archive;compress;
+Categories=Utility;
+

@@ -8,9 +8,9 @@ import (
 	"fyne.io/fyne/v2"
 )
 
-//go:embed dist/script/icon.png
+//go:embed dist/release/icon.png
 var resourceIconPngData []byte
 var resourceIconPng = &fyne.StaticResource{
-	StaticName:    "dist/script/icon.png",
+	StaticName:    "dist/release/icon.png",
 	StaticContent: resourceIconPngData,
 }
