@@ -1,11 +1,12 @@
 # This workflow will build a golang project and deploy the compiled binary to GitHub Pages
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
 
-name: Build and deploy 7z-GUI-Linux
+name: Build, deploy and release 7z-GUI-Linux
 
 on:
   push:
-    branches: [ "main" ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ "main" ]
 
@@ -17,9 +18,9 @@ concurrency:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
-  contents: read
-  pages: write      # to deploy to Pages
-  id-token: write   # to verify the deployment originates from an appropriate source
+  contents: write   # Needed for Releases
+  pages: write      # To deploy to Pages
+  id-token: write   # To verify the deployment originates from an appropriate source
 
 jobs:
   # Build job
@@ -134,6 +135,29 @@ jobs:
       with:
         # Upload entire repository
         path: './public'
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') # Only run for tags
+      with:
+        body: >-
+          Thank you for using this tool! 
+          
+          **Installation:** 
+          - Download the `.tar.xz` for your architecture below.
+          - Make the `install.sh` script executable (right click -> properties -> permissions -> Make executable).
+          - Double click `install.sh` to install.
+          - You now have 7z-GUI-Linux installed!
+
+          Star this repo if you find this tool useful!
+          
+          ---
+        generate_release_notes: true
+        files: |
+          public/*.tar.xz
+          public/*.sha256
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
   # Deploy job
   deploy:

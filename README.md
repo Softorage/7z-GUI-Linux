@@ -26,16 +26,26 @@ Please leave a star if you find it useful!
 
 ## Usage
 
-1. Download from [the official website](https://softorage.github.io/7z-GUI-Linux/).
+1. Download 7z-GUI-Linux  as appropriate for you CPU architecture from [the official website](https://softorage.github.io/7z-GUI-Linux/).
 2. Extract.
 3. If you want to use it as a portable tool without installation:
-   1. Having extracted, you should now have the `7z-GUI-Linux` file under usr/local/bin.
+   1. Having extracted, you should now have the `7z-GUI-Linux` file along with other files.
    2. Simply make `7z-GUI-Linux` executable => right click `7z-GUI-Linux`, go to Properties, and in the Permissions tab, tick 'Make executable'.
    3. Double click `7z-GUI-Linux` to launch!
-4. If you would like to install the tool in userspace (Recommended over system install):
-   1. In the the extracted folder (where usr and Makefile is present), open terminal, and run `make user-install`.
-   2. To uninstall, in the the extracted folder (where usr and Makefile is present), open terminal, and run `make user-uninstall`.
-5. If you would like know how to do a sytem install, run `make`.
+4. It is recommended to install the tool in userspace (i.e. without `sudo`) instead of system install (i.e. with `sudo`). Nevertheless, you can safely install, update or uninstall under `sudo` privileges as well.
+5. To install, update or uninstall:
+   - Install: 
+      1. In the the extracted folder, find `install.sh`.
+      2. Simply make `install.sh` executable => right click `install.sh`, go to Properties, and in the Permissions tab, tick 'Make executable'.
+      3. Double click `install.sh` to install!
+   - Update:
+      1. In the the extracted folder, find `update.sh`.
+      2. Simply make `update.sh` executable => right click `update.sh`, go to Properties, and in the Permissions tab, tick 'Make executable'.
+      3. Double click `update.sh` to update!
+   - Uninstall:
+      1. In the the extracted folder, find `uninstall.sh`.
+      2. Simply make `uninstall.sh` executable => right click `uninstall.sh`, go to Properties, and in the Permissions tab, tick 'Make executable'.
+      3. Double click `uninstall.sh` to uninstall!
 
 ### A few notes:
 
