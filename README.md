@@ -57,6 +57,8 @@ Please leave a star if you find it useful!
 
 - Compress and Extract 
 - Supports:
+   - Multiple archive formats
+   - Compression methods
    - Compression level
    - Dictionary size
    - Word size
@@ -68,7 +70,7 @@ Please leave a star if you find it useful!
    - Split to volumes
    - Encryption settings
 - Provides introductory information for various input options
-- Offers similar GUI to the Windows counterpart.
+- Offers familiar GUI to the Windows counterpart.
 
 ## Screenshots
 
@@ -82,7 +84,7 @@ Please leave a star if you find it useful!
 
 1. Do you know how to code? Do you use AI to develop this project? Is this vibe-coded?
 
-   Yes. I think, I may kinda know how to code. I am fairly confident that I understand the code I maintain (I keep forgetting though). Sometimes, there do appear parts of code (often via LLMs) that work and I don't quite understand how. But hey, that was the case even in StackOverflow days. I guess I'm dumb, just not enough to constantly keep messing the code. (-> Sanmay)  
+   Yes. I think, I may kinda know how to code. I am fairly confident that I understand the code I maintain (I keep forgetting though). Sometimes, there do appear parts of code (often via LLMs) that work and I don't quite understand how (and I have to ask to understand). But hey, that was the case even in StackOverflow days. I guess I'm dumb, just not enough to constantly keep messing the code. (-> Sanmay)  
    We may use AI when developing this project. If you find any issues, please report them to us. We will try to fix them as soon as possible.  
    No.
 
@@ -94,7 +96,7 @@ Please leave a star if you find it useful!
 
 ## Other tools
 
-*Looking for a throttlestop alternative for you Intel CPU on Linux? Try our other tool: [undervolt-go](https://github.com/Softorage/undervolt-go). It comes with all the risks of a system level utility, though.*
+*Looking for a throttlestop alternative for your Intel CPU on Linux? Try our other tool: [undervolt-go](https://github.com/Softorage/undervolt-go). It comes with all the risks of a system level utility, though.*
 
 ## What is Softorage?
 

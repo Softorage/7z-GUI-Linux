@@ -140,17 +140,18 @@ jobs:
       uses: softprops/action-gh-release@v2
       if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') # Only run for tags
       with:
+        draft: true
         body: >-
-          Thank you for using this tool! 
-          
-          **Installation:** 
-          - Download the `.tar.xz` for your architecture below.
-          - Make the `install.sh` script executable (right click -> properties -> permissions -> Make executable).
-          - Double click `install.sh` to install.
-          - You now have 7z-GUI-Linux installed!
-
-          Star this repo if you find this tool useful!
-          
+          Thank you for using this tool!  
+            
+          **Installation:**  
+          - Download the `.tar.xz` for your architecture below.  
+          - Make the `install.sh` script executable (right click -> properties -> permissions -> Make executable).  
+          - Double click `install.sh` to install.  
+          - You now have 7z-GUI-Linux installed!  
+            
+          Star this repo if you find this tool useful!  
+            
           ---
         generate_release_notes: true
         files: |

@@ -55,18 +55,20 @@ var (
 	historyList *widget.List
 )
 
+var root7zCmd string = "7z"
+// version is passed at build time
+var version string = "v0.1"
+
 // Set initial value for the default record under Operations History
 var historyData = []operationLog{
 	{
 		ID:        0,
-		File:      "System Status",
+		File:      fmt.Sprintf("7-Zip GUI (%s)", version),
 		OpType:    "Initialized",
 		Status:    "Ready",
 		Timestamp: time.Now().Format("15:04:05"),
 	},
 }
-
-var root7zCmd string = "7z"
 
 // setInfo updates the bottom info bar and sets a 6-second timer to clear it.
 func setInfo(text string) {

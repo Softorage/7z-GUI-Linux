@@ -38,21 +38,36 @@
     <p>
       To use <strong>7z GUI Linux</strong> on your system, follow these steps:
     </p>
-    <ol type="1">
-      <li>Download latest release from below.</li>
-      <li>Extract the archive.</li>
-      <li>If you don't want to install:
-        <ol>
-          <li>Having extracted, you should now have the `7z-GUI-Linux` file under usr/local/bin.</li>
-          <li>Simply make `7z-GUI-Linux` executable => right click `7z-GUI-Linux`, go to Properties, and in the Permissions tab, tick 'Make executable'.</li>
-          <li>Double click `7z-GUI-Linux` to launch!</li>
+    <ol>
+      <li>Download 7z-GUI-Linux as appropriate for you CPU architecture from below.</li>
+      <li>Extract.</li>
+      <li>If you want to use it as a portable tool without installation:<ol>
+          <li>Having extracted, you should now have the <code>7z-GUI-Linux</code> file along with other files.</li>
+          <li>Simply make <code>7z-GUI-Linux</code> executable =&gt; right click <code>7z-GUI-Linux</code>, go to Properties, and in the Permissions tab, tick &#39;Make executable&#39;.</li>
+          <li>Double click <code>7z-GUI-Linux</code> to launch!</li>
         </ol>
       </li>
-      <li>If you want to install:
-        <ol>
-          <li>In the the extracted folder (where usr and Makefile is present), open terminal, and run <code>make user-install</code></li>
-          <li>To uninstall, in the the extracted folder (where usr and Makefile is present), open terminal, and run <code>make user-uninstall</code></li>
-        </ol>
+      <li>It is recommended to install the tool in userspace (i.e. without <code>sudo</code>) instead of system install (i.e. with <code>sudo</code>). Nevertheless, you can safely install, update or uninstall under <code>sudo</code> privileges as well.</li>
+      <li>To install, update or uninstall:<ul>
+          <li>Install: <ol>
+              <li>In the the extracted folder, find <code>install.sh</code>.</li>
+              <li>Simply make <code>install.sh</code> executable =&gt; right click <code>install.sh</code>, go to Properties, and in the Permissions tab, tick &#39;Make executable&#39;.</li>
+              <li>Double click <code>install.sh</code> to install!</li>
+            </ol>
+          </li>
+          <li>Update:<ol>
+              <li>In the the extracted folder, find <code>update.sh</code>.</li>
+              <li>Simply make <code>update.sh</code> executable =&gt; right click <code>update.sh</code>, go to Properties, and in the Permissions tab, tick &#39;Make executable&#39;.</li>
+              <li>Double click <code>update.sh</code> to update!</li>
+            </ol>
+          </li>
+          <li>Uninstall:<ol>
+              <li>In the the extracted folder, find <code>uninstall.sh</code>.</li>
+              <li>Simply make <code>uninstall.sh</code> executable =&gt; right click <code>uninstall.sh</code>, go to Properties, and in the Permissions tab, tick &#39;Make executable&#39;.</li>
+              <li>Double click <code>uninstall.sh</code> to uninstall!</li>
+            </ol>
+          </li>
+        </ul>
       </li>
     </ol>
   </header>
