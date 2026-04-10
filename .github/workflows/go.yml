@@ -39,7 +39,6 @@ jobs:
 
     - name: Setup Pages
       uses: actions/configure-pages@v5
-    # Extract the Git Version & Commit to define dynamic folder names
 
     - name: Install Tools
       env:
@@ -55,6 +54,10 @@ jobs:
         echo "GIT_TAG=$(git describe --tags --always)" >> $GITHUB_ENV
 
     - name: Cross-Compile, Optimize, and Compress
+      env:
+        URL_386: "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-linux-x86.tar.xz"
+        URL_AMD64: "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-linux-x64.tar.xz"
+        URL_ARM64: "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-linux-arm64.tar.xz"
       run: |
         mkdir -p ./public
 
@@ -65,7 +68,6 @@ jobs:
         for arch in "${archs[@]}"; do
           echo "Building for Linux ${arch}"
                     
-          # Use compile instead of linux
           # -ldflags "-s -w" removes debug info and symbol tables
           # -env GOTOOLCHAIN=auto tells the Go tool inside the container that it is allowed to automatically download the required toolchain
           echo "------------ fyne-cross working... ------------"
@@ -100,6 +102,36 @@ jobs:
           cp ./dist/release/icon.png "${STAGING_DIR}/${NAME}.png" || true
           cp ./dist/release/7z-GUI-Linux.desktop "${STAGING_DIR}/" || true
           echo "Done"
+
+          echo "Downloading 7zzs for architecture: ${arch}"
+          case $arch in
+            "386")
+              DL_URL="${URL_386}"
+              ;;
+            "amd64")
+              DL_URL="${URL_AMD64}"
+              ;;
+            "arm64")
+              DL_URL="${URL_ARM64}"
+              ;;
+          esac
+
+          # Download the archive (-f fails silently on server errors, -L follows redirects)
+          curl -f -L "${DL_URL}" -o "downloaded_7z_${arch}.tar.xz"
+          
+          # Extract it to a temporary directory
+          mkdir -p temp_extract
+          tar -xf "downloaded_7z_${arch}.tar.xz" -C temp_extract
+          
+          # Find 7zzs file and copy it to STAGING_DIR (futureproofing with find, in case it's in a nested folder in future)
+          find temp_extract -type f -name "7zzs" -exec cp {} "${STAGING_DIR}/" \;
+          
+          # Make the binary is executable
+          chmod +x "${STAGING_DIR}/7zzs"
+
+          # Clean up download files before compression
+          rm -rf temp_extract "downloaded_7z_${arch}.tar.xz"
+          echo "7zzs added to Staging Area successfully."
 
           echo "Create Archive"
           TAR_NAME="${NAME}-${arch}-${{ env.GIT_TAG }}.tar.xz"

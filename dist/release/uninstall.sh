@@ -2,6 +2,7 @@
 
 NAME="7z-GUI-Linux"
 EXEC="7z-GUI-Linux"
+BIN7Z="7zzs"
 ICON="7z-GUI-Linux.png"
 
 REAL_USER="${SUDO_USER:-$USER}"
@@ -34,6 +35,7 @@ ICON_DIR="${DESTDIR}${BASE_PREFIX}/${ICON_SUBDIR}"
 
 echo "Removing files from: ${DESTDIR:-/}"
 rm -f "$BIN_DIR/$EXEC"
+rm -f "$BIN_DIR/$BIN7Z"
 rm -f "$APP_DIR/$NAME.desktop"
 rm -f "$ICON_DIR/$ICON"
 

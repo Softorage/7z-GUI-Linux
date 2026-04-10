@@ -5,6 +5,7 @@ cd "$(dirname "$0")"
 
 NAME="7z-GUI-Linux"
 EXEC="7z-GUI-Linux"
+BIN7Z="7zzs"
 ICON="7z-GUI-Linux.png"
 
 REAL_USER="${SUDO_USER:-$USER}"
@@ -47,6 +48,14 @@ echo "Installing to: ${DESTDIR:-/}"
 install -Dm 755 "$EXEC" "$BIN_DIR/$EXEC"
 install -Dm 644 "$ICON" "$ICON_DIR/$ICON"
 install -Dm 644 "$NAME.desktop" "$APP_DIR/$NAME.desktop"
+
+# Install 7zzs binary
+if [ -f "${BIN7Z}" ]; then
+    echo "Installing ${BIN7Z}"
+    install -Dm 755 "${BIN7Z}" "$BIN_DIR/${BIN7Z}"
+else
+    echo "Warning: ${BIN7Z} not found in the installation folder. Skipping."
+fi
 
 # Fix the Exec path inside the .desktop file for local install
 if [ "$EUID" -ne 0 ]; then

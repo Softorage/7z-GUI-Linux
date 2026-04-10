@@ -52,23 +52,14 @@ var (
 	statusTimer *time.Timer
 	statusMu    sync.Mutex
 
+	// Operations History
+	historyData []operationLog
 	historyList *widget.List
 )
 
 var root7zCmd string = "7z"
 // version is passed at build time
-var version string = "v0.1"
-
-// Set initial value for the default record under Operations History
-var historyData = []operationLog{
-	{
-		ID:        0,
-		File:      fmt.Sprintf("7-Zip GUI (%s)", version),
-		OpType:    "Initialized",
-		Status:    "Ready",
-		Timestamp: time.Now().Format("15:04:05"),
-	},
-}
+var version string = "dev"
 
 // setInfo updates the bottom info bar and sets a 6-second timer to clear it.
 func setInfo(text string) {
@@ -163,47 +154,75 @@ func main() {
 	// Dependency check
 	go checkDependencies(w)
 
+	// Set backend7z to store the backend 7-zip being used
+	backend7z := ""
+	// Restrict length to 5 letter in case of absolue path (./7zzs). Check the length first to prevent a crash
+	if len(root7zCmd) >= 5 {
+		backend7z = root7zCmd[len(root7zCmd)-5:]
+	} else {
+		// Fallback if the string is shorter than 5 letters
+		if root7zCmd == "7z" {
+			backend7z = "p7zip"
+		} else {
+			backend7z = root7zCmd
+		}
+	}
+	// Set initial value for the default record under Operations History
+	historyData = []operationLog{
+			{
+			ID:        0,
+			File:      fmt.Sprintf("7-Zip GUI (%s) with '%s' as backend", version, backend7z),
+			OpType:    "Initialized",
+			Status:    "Ready",
+			Timestamp: time.Now().Format("15:04:05"),
+		},
+	}
+
 	w.ShowAndRun()
 }
 
 func checkDependencies(w fyne.Window) {
-	_, err := exec.LookPath(root7zCmd)
-	if err != nil {
-		dialog.ShowConfirm("7-Zip Not Found",
-			"The '7z' command was not found.\nWould you like to install it using your system's package manager?\n(This will prompt for root password)",
-			func(install bool) {
-				if install {
-					install7Zip(w)
-				} else {
-					os.Exit(1)
-				}
-			}, w)
+	// Check for 7zz in PATH
+	if _, err := exec.LookPath("7zz"); err == nil {
+		root7zCmd = "7zz"
+		return
 	}
-}
-
-func install7Zip(w fyne.Window) {
-	setInfo("Installing p7zip...")
-	var cmd *exec.Cmd
-
-	// Basic distro detection
-	if _, err := exec.LookPath("apt-get"); err == nil {
-		cmd = exec.Command("pkexec", "apt-get", "install", "-y", "p7zip-full")
-	} else if _, err := exec.LookPath("dnf"); err == nil {
-		cmd = exec.Command("pkexec", "dnf", "install", "-y", "p7zip")
-	} else if _, err := exec.LookPath("pacman"); err == nil {
-		cmd = exec.Command("pkexec", "pacman", "-S", "--noconfirm", "p7zip")
-	} else {
-		dialog.ShowError(fmt.Errorf("unsupported package manager"), w)
+	// Check for 7zzs in PATH
+	if _, err := exec.LookPath("7zzs"); err == nil {
+		root7zCmd = "7zzs"
+		return
+	}
+	// Check for ./7zzs (placed in the same directory as the app)
+	local7zzsPath := getFullCmdPath("7zzs", w)
+	if info, err := os.Stat(local7zzsPath); err == nil && !info.IsDir() {
+		// Ensure the file has executable permissions (Unix/Linux)
+		if info.Mode().Perm()&0111 != 0 {
+			root7zCmd = local7zzsPath
+			return
+		}
+	}
+	// Check for 7z in PATH
+	if _, err := exec.LookPath("7z"); err == nil {
+		root7zCmd = "7z"
 		return
 	}
 
-	err := cmd.Run()
+	dialog.ShowInformation("7-Zip Not Found", "No 7z found to be installed or at recognized place in the system. We have automated workflow that ensures you have 7-Zip when you install this tool. It appears something may not worked correctly during install. It is recommended to either uninstall the tool, download latest copy and reinstall, so that you have a working copy of 7-Zip on your system, or install 7-Zip manually.", w)
+}
+
+// use this for 7zzs that sits beside our binary
+func getFullCmdPath(appname string, w fyne.Window) string {
+	exePath, err := os.Executable()
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("failed to install 7-Zip: %v", err), w)
-	} else {
-		dialog.ShowInformation("Success", "7-Zip installed successfully!", w)
-		setInfo("7-Zip installation complete.")
+		dialog.ShowError(fmt.Errorf("Failed to get executable path: %v", err), w)
 	}
+	realPath, err := filepath.EvalSymlinks(exePath)
+	if err != nil {
+		realPath = exePath
+	}
+	exeDir := filepath.Dir(realPath)
+	appnamePath := filepath.Join(exeDir, appname)
+	return appnamePath
 }
 
 // --- TABS ---
@@ -305,15 +324,15 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	threadSelect.OnChanged = func(_ string) { setInfo(fmt.Sprintf("CPU Threads: Total available = %d", numCPU)) }
 
 	/*
-	// Simulated calculation based on dict size
-	memCompLabel := widget.NewLabel("~150 MB")
-	memDecompLabel := widget.NewLabel("~20 MB")
-	dictSelect.OnChanged = func(_ string) {
-		memCompLabel.SetText("Depends on Dict & Threads")
-		memDecompLabel.SetText("Depends on Dict")
-		setInfo("Dictionary Size: How much data is analyzed in memory for repetitions. The larger it is, higher the compression ratios and more the RAM required. Generally, 32MB-64MB is sufficient for most files, while 512MB+ is recommended for massive archives. Should be less than or equal to the total size of the files being compressed.")
-	}
-		*/
+		// Simulated calculation based on dict size
+		memCompLabel := widget.NewLabel("~150 MB")
+		memDecompLabel := widget.NewLabel("~20 MB")
+		dictSelect.OnChanged = func(_ string) {
+			memCompLabel.SetText("Depends on Dict & Threads")
+			memDecompLabel.SetText("Depends on Dict")
+			setInfo("Dictionary Size: How much data is analyzed in memory for repetitions. The larger it is, higher the compression ratios and more the RAM required. Generally, 32MB-64MB is sufficient for most files, while 512MB+ is recommended for massive archives. Should be less than or equal to the total size of the files being compressed.")
+		}
+	*/
 
 	// Update Mode
 	updateSelect := widget.NewSelect([]string{"Add and replace files", "Update and add files", "Freshen existing files", "Synchronize files"}, nil)
@@ -569,8 +588,8 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		widget.NewFormItem("Solid Block size:", blockSelect),
 		widget.NewFormItem("CPU Threads:", threadSelect),
 		/*
-		widget.NewFormItem("Memory Compressing:", memCompLabel),
-		widget.NewFormItem("Memory Decompressing:", memDecompLabel),
+			widget.NewFormItem("Memory Compressing:", memCompLabel),
+			widget.NewFormItem("Memory Decompressing:", memDecompLabel),
 		*/
 		widget.NewFormItem("Update mode:", updateSelect),
 		widget.NewFormItem("Options:", container.NewVBox(sfxCheck, sharedCheck)),
