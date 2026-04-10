@@ -152,10 +152,11 @@ func main() {
 	))
 
 	// Dependency check
-	go checkDependencies(w)
+	checkDependencies(w)
 
 	// Set backend7z to store the backend 7-zip being used
 	backend7z := ""
+	// Using length instead of filepath.base, as it allows to differentiate between 7zzs and ./7zzs
 	// Restrict length to 5 letter in case of absolue path (./7zzs). Check the length first to prevent a crash
 	if len(root7zCmd) >= 5 {
 		backend7z = root7zCmd[len(root7zCmd)-5:]
