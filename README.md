@@ -76,9 +76,9 @@ Please leave a star if you find it useful!
 
 | Description | Screenshot |
 | --- | --- |
-| Compress | ![Voltage Offsets](/dist/images/screenshots/v0.1.2/Compress.png) |
-| Extract | ![Power Limit](/dist/images/screenshots/v0.1.2/Extract.png) |
-| Status | ![Power Limit](/dist/images/screenshots/v0.1.2/Status.png) |
+| Compress | ![Voltage Offsets](/dist/images/screenshots/v0.1.5/Compress.png) |
+| Extract | ![Power Limit](/dist/images/screenshots/v0.1.5/Extract.png) |
+| Status | ![Power Limit](/dist/images/screenshots/v0.1.5/Status.png) |
 
 ## FAQ
 
