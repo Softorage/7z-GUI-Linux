@@ -76,3 +76,21 @@ if [ -d "$DESKTOP_FOLDER" ]; then
 fi
 
 echo "Installation complete!"
+
+# Send notification on successful install
+TITLE="Install Complete"
+MSG="7z GUI Linux installled successfully."
+
+if command -v notify-send &> /dev/null; then
+    # Linux
+    if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+        # If run via sudo, find the original user's DBUS session to send the notification
+        USER_UID=$(id -u "$SUDO_USER")
+        sudo -u "$SUDO_USER" DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$USER_UID/bus notify-send "$TITLE" "$MSG" -i emblem-default
+    else
+        # Run as normal user
+        notify-send "$TITLE" "$MSG" -i emblem-default
+    fi
+else
+    echo "Notification tool not found, but install is complete."
+fi
