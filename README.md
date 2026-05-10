@@ -1,8 +1,11 @@
 # 7z GUI Linux
 
-A GUI for 7-zip on Linux with all the advanced features that you are used to.
+A GUI for 7-zip on Linux with all the advanced features that you are used to. Doesn't require any dependency to run other than the 7-zip backend.
 
-Uses p7zip installed on your system as the backend. Doesn't require any other dependency to run.
+Uses either of the below as backend:
+  - 7zz (7-zip for Linux)
+  - 7zzs (statically linked 7-zip for Linux): You will find this alongside 7z-GUI-Linux
+  - p7zip: Older community developed version. Often installed on many systems as a default. 
 
 ---
 
@@ -46,12 +49,6 @@ Please leave a star if you find it useful!
       1. In the the extracted folder, find `uninstall.sh`.
       2. Simply make `uninstall.sh` executable => right click `uninstall.sh`, go to Properties, and in the Permissions tab, tick 'Make executable'.
       3. Double click `uninstall.sh` to uninstall!
-
-### A few notes:
-
-- You need p7zip installed on your system to use this utility.
-- You will be prompted to install p7zip if you do already have it. In that case, you will be required to put your password. You DO NOT need to install p7zip via 7z-GUI-Linux, and can install it on your own.
-- Apart from the one specific scenario discussed above (i.e., you not having p7zip already installed), you do not need sudo privilege to use 7z-GUI-Linux, and it is advised that you run it normally (double-click), with least privileges.
 
 ## Features
 
