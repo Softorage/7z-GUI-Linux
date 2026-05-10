@@ -131,7 +131,3 @@ func getFullCmdPath(appname string, w fyne.Window) string {
 	appnamePath := filepath.Join(exeDir, appname)
 	return appnamePath
 }
-
-// --- TABS ---
-
-// --- LOGIC MAPPER & EXECUTION ---
