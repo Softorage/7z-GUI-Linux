@@ -55,9 +55,16 @@ var (
 	// Operations History
 	historyData []operationLog
 	historyList *widget.List
+
+	// Console Log State
+	logMu          sync.Mutex
+	logLines       []string
+	currentLogLine []byte
+	consoleLog     *widget.Entry
 )
 
 var root7zCmd string = "7z"
+
 // version is passed at build time
 var version string = "dev"
 
@@ -170,7 +177,7 @@ func main() {
 	}
 	// Set initial value for the default record under Operations History
 	historyData = []operationLog{
-			{
+		{
 			ID:        0,
 			File:      fmt.Sprintf("7-Zip GUI (%s) with '%s' as backend", version, backend7z),
 			OpType:    "Initialized",
@@ -788,6 +795,25 @@ func isPasswordProtected(archive string) bool {
 	return false
 }
 
+// processLogByte builds the console log stream exactly as a terminal does
+func processLogByte(b byte) {
+	logMu.Lock()
+	defer logMu.Unlock()
+
+	if b == '\n' { // New line
+		logLines = append(logLines, string(currentLogLine))
+		currentLogLine = currentLogLine[:0]
+	} else if b == '\r' { // Carriage return (7-Zip uses this to overwrite progress)
+		currentLogLine = currentLogLine[:0]
+	} else if b == '\b' { // Backspace
+		if len(currentLogLine) > 0 {
+			currentLogLine = currentLogLine[:len(currentLogLine)-1]
+		}
+	} else { // Standard character
+		currentLogLine = append(currentLogLine, b)
+	}
+}
+
 func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	statusLog = widget.NewLabel("No operations running.")
 	statusLog.Wrapping = fyne.TextWrapWord
@@ -873,15 +899,30 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 		widget.NewSeparator(),
 	)
 
-	// Bottom section: History
+	// Bottom Section: History and Log Tabs
 	historySection := container.NewBorder(
-		widget.NewLabelWithStyle("Operation History", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		nil, nil, nil,
+		nil, nil, nil, nil,
 		historyList,
 	)
 
-	// Use Split so user can resize the log area
-	split := container.NewVSplit(currentStatus, historySection)
+	// Initialize the Console Log Text Box
+	consoleLog = widget.NewMultiLineEntry()
+	consoleLog.Wrapping = fyne.TextWrapWord
+	consoleLog.TextStyle = fyne.TextStyle{Monospace: true}
+	// Note: We leave it enabled so users can select and copy the text
+
+	logSection := container.NewBorder(
+		nil, nil, nil, nil,
+		consoleLog,
+	)
+
+	bottomTabs := container.NewAppTabs(
+		container.NewTabItem("Operation History", historySection),
+		container.NewTabItem("Log", logSection),
+	)
+
+	// Use Split so user can resize the status vs tab area
+	split := container.NewVSplit(currentStatus, bottomTabs)
 	split.Offset = 0.3 // Give current status 30% of space initially
 
 	return container.NewPadded(split)
@@ -1058,6 +1099,24 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 		return
 	}
 
+	// Capture stderr for potential errors
+	stderr, err := currentCmd.StderrPipe()
+	if err != nil {
+		setFinalStatus(fmt.Sprintf("Error connecting to stderr: %v", err))
+		return
+	}
+
+	// Initialize the console log text for this run
+	logMu.Lock()
+	if len(logLines) > 0 {
+		logLines = append(logLines, "") // Break apart separate runs visually
+	}
+	commandStr := fmt.Sprintf("Running: %s %s", root7zCmd, strings.Join(args, " "))
+	logLines = append(logLines, "========================================", commandStr)
+	currentLogLine = currentLogLine[:0]
+	logMu.Unlock()
+	consoleLog.SetText(strings.Join(logLines, "\n"))
+
 	// Lock UI functionality safely
 	stateMu.Lock()
 	isOperationRunning = true
@@ -1091,6 +1150,20 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 
 	ticker := time.NewTicker(1 * time.Second)
 
+	// Stderr Reader Routine
+	go func() {
+		buf := make([]byte, 1)
+		for {
+			n, err := stderr.Read(buf)
+			if n > 0 {
+				processLogByte(buf[0])
+			}
+			if err != nil {
+				break
+			}
+		}
+	}()
+
 	// UI Update Routine (Once per second)
 	go func() {
 		for range ticker.C {
@@ -1099,6 +1172,15 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 			paused := isPaused
 			pct := currentPercent
 			stateMu.RUnlock()
+
+			// Update the UI Log
+			logMu.Lock()
+			fullLog := strings.Join(logLines, "\n")
+			if len(currentLogLine) > 0 {
+				fullLog += "\n" + string(currentLogLine)
+			}
+			logMu.Unlock()
+			consoleLog.SetText(fullLog)
 
 			if !running {
 				return
@@ -1119,15 +1201,21 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 		defer ticker.Stop()
 		re := regexp.MustCompile(`(\d+)%`)
 		buf := make([]byte, 1)
-		var currentLine []byte
 
 		// 7-zip relies heavily on \b (backspaces) and \r to rewrite lines visually.
 		for {
 			n, readErr := stdout.Read(buf)
 			if n > 0 {
 				b := buf[0]
+				// Stream byte to our terminal parser
+				processLogByte(b)
+
 				if b == '\r' || b == '\n' || b == '\b' {
-					str := string(currentLine)
+					// Safely read the line parsed by processLogByte
+					logMu.Lock()
+					str := string(currentLogLine)
+					logMu.Unlock()
+
 					matches := re.FindStringSubmatch(str)
 					if len(matches) > 1 {
 						val, _ := strconv.ParseFloat(matches[1], 64)
@@ -1135,9 +1223,6 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 						currentPercent = val
 						stateMu.Unlock()
 					}
-					currentLine = currentLine[:0]
-				} else {
-					currentLine = append(currentLine, b)
 				}
 			}
 			if readErr != nil {
@@ -1146,6 +1231,15 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 		}
 
 		err = currentCmd.Wait()
+
+		// Final Log UI Update (catches the very last fragments)
+		logMu.Lock()
+		fullLog := strings.Join(logLines, "\n")
+		if len(currentLogLine) > 0 {
+			fullLog += "\n" + string(currentLogLine)
+		}
+		logMu.Unlock()
+		consoleLog.SetText(fullLog)
 
 		// Update History Status
 		stateMu.Lock()
