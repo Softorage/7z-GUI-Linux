@@ -107,6 +107,18 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	consoleLog.TextStyle = fyne.TextStyle{Monospace: true}
 	// Note: We leave it enabled so users can select and copy the text
 
+	// Auto-scroll to the bottom whenever text updates.
+	// Hooking into OnChanged assures that it will execute cleanly after SetText() resets it.
+	consoleLog.OnChanged = func(s string) {
+		lineCount := 0
+		for _, c := range s {
+			if c == '\n' {
+				lineCount++
+			}
+		}
+		consoleLog.CursorRow = lineCount
+	}
+
 	logSection := container.NewBorder(
 		nil, nil, nil, nil,
 		consoleLog,

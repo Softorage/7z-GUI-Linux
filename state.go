@@ -46,6 +46,7 @@ var (
 	logMu          sync.Mutex
 	logLines       []string
 	currentLogLine []byte
+	logCursor      int // Emulates a terminal cursor position to prevent flickering
 	consoleLog     *widget.Entry
 )
 
@@ -109,13 +110,22 @@ func processLogByte(b byte) {
 	if b == '\n' { // New line
 		logLines = append(logLines, string(currentLogLine))
 		currentLogLine = currentLogLine[:0]
-	} else if b == '\r' { // Carriage return (7-Zip uses this to overwrite progress)
-		currentLogLine = currentLogLine[:0]
+		logCursor = 0 // Reset cursor for the new line
+	} else if b == '\r' { // Carriage return
+		// Instead of clearing the slice (which causes UI flickering),
+		// we just move the cursor back to the start.
+		// Upcoming characters will overwrite the existing ones.
+		logCursor = 0
 	} else if b == '\b' { // Backspace
-		if len(currentLogLine) > 0 {
-			currentLogLine = currentLogLine[:len(currentLogLine)-1]
+		if logCursor > 0 {
+			logCursor--
 		}
 	} else { // Standard character
-		currentLogLine = append(currentLogLine, b)
+		if logCursor < len(currentLogLine) {
+			currentLogLine[logCursor] = b
+		} else {
+			currentLogLine = append(currentLogLine, b)
+		}
+		logCursor++
 	}
 }
