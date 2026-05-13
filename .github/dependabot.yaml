@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # 1. Update GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]

@@ -21,7 +21,6 @@ Please leave a star if you find it useful!
 - [Features](#features)
 - [Screenshots](#screenshots)
 - [FAQ](#faq)
-- [Contributors](#contributors)
 - [Credits](#credits)
 - [Other tools](#other-tools)
 - [What is Softorage?](#what-is-softorage)
@@ -97,7 +96,7 @@ Please leave a star if you find it useful!
 
 ## What is Softorage?
 
-Softorage is a software discovery platform with user privacy and safety as its main characteristics. It also allows you to get the software on your computer, but with a distinction. Instead of hosting the packages (which involves risks of package manipulation, and is a well known malware vector), it simply links you to the official developer's website. This helps ensure that you get the software package as the original developers intended.
+Softorage is a software discovery platform that takes user trust and safety very seriously. It allows you to get the software on your computer, but with a distinction. Instead of hosting the packages (which involves risks of package manipulation, and is a well known malware vector), it simply links you to the official developer's website. This helps ensure that you get the software package as the original developers intended.
 
 ## License
 
