@@ -27,7 +27,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0  # Ensures full history, including tags
 
@@ -38,7 +38,7 @@ jobs:
         cache: true
 
     - name: Setup Pages
-      uses: actions/configure-pages@v5
+      uses: actions/configure-pages@v6
 
     - name: Install Tools
       env:
@@ -163,13 +163,13 @@ jobs:
 
     - name: Upload artifact
       # upload artifact in the build stage, so that it is later on accessible in the deploy stage
-      uses: actions/upload-pages-artifact@v3
+      uses: actions/upload-pages-artifact@v5
       with:
         # Upload entire repository
         path: './public'
 
     - name: Create Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') # Only run for tags
       with:
         draft: true
@@ -204,4 +204,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
