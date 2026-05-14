@@ -21,6 +21,7 @@ permissions:
   contents: write   # Needed for Releases
   pages: write      # To deploy to Pages
   id-token: write   # To verify the deployment originates from an appropriate source
+  attestations: write
 
 jobs:
   # Build job
