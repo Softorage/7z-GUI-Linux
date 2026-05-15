@@ -1,24 +1,35 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# --- Fyne & Build Artifacts ---
+# Fyne CLI and demo binaries
+fyne
+fyne-cross/
+bin/
 
-node_modules
-dist
-dist-ssr
-*.local
+# Package outputs
+*.tar.xz
+*.zip
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+# --- Go Standard ---
+# Binaries and plugins
+*.so
+*.dylib
+*.test
+
+# Test artifacts
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+**/testdata/failed/
+
+# Dependency directories (optional, keep if not using Go modules)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# VS Code
+.vscode/
+
+# Local Environment
+.env

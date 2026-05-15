@@ -126,6 +126,7 @@ jobs:
           
           # Find 7zzs file and copy it to STAGING_DIR (futureproofing with find, in case it's in a nested folder in future)
           find temp_extract -type f -name "7zzs" -exec cp {} "${STAGING_DIR}/" \;
+          find temp_extract -type f -iname "license*" -exec cp {} "${STAGING_DIR}/7-zip.license" \;
           
           # Make the binary is executable
           chmod +x "${STAGING_DIR}/7zzs"
