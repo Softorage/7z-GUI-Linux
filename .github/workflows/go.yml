@@ -76,13 +76,15 @@ jobs:
             --arch ${arch} \
             -env GOTOOLCHAIN=auto \
             --icon "dist/release/icon.png" \
-            --ldflags="-s -w -X main.version=${{ env.GIT_TAG }}" \
+            --ldflags="-s" \
+            --ldflags="-w" \
+            --ldflags="-X=main.version=${{ env.GIT_TAG }}" \
             --name "${NAME}"
           fyne-cross linux \
             --arch ${arch} \
             -env GOTOOLCHAIN=auto \
             --icon "dist/release/icon.png" \
-            --ldflags="-X main.version=${{ env.GIT_TAG }}" \
+            --ldflags="-X=main.version=${{ env.GIT_TAG }}" \
             --name "${NAME}-debug"
           echo "------------ fyne-cross worked hard. ------------"
           
