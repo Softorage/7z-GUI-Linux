@@ -49,6 +49,8 @@ Please leave a star if you find it useful!
       2. Simply make `uninstall.sh` executable => right click `uninstall.sh`, go to Properties, and in the Permissions tab, tick 'Make executable'.
       3. Double click `uninstall.sh` to uninstall!
 
+Note: If you face any crashes, please run debug build through command line, and recreate the circumstances leading to crash. Share the coutput in command line when opening the issue on GitHub.
+
 ## Features
 
 - Compress and Extract 

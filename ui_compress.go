@@ -13,6 +13,9 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/ncruces/zenity"
+
 )
 
 func buildCompressTab(w fyne.Window) fyne.CanvasObject {
@@ -21,6 +24,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	srcEntry.PlaceHolder = "Select a file or folder to compress..."
 
 	browseFileBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
+		/*
 		d := dialog.NewFileOpen(func(uri fyne.URIReadCloser, err error) {
 			if err == nil && uri != nil {
 				srcEntry.SetText(uri.URI().Path())
@@ -31,9 +35,24 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		windowSize := w.Canvas().Size()
 		d.Resize(fyne.NewSize(windowSize.Width*0.8, windowSize.Height*0.8))
 		d.Show()
+		*/
+
+
+		go func() {
+			file, err := zenity.SelectFile(
+				zenity.Title("Select File"),
+				// Decide: We can filter extensions like this
+				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
+			)
+			if err == nil && file != "" {
+					srcEntry.SetText(file)
+			}
+		}()
+
 	})
 
 	browseFolderBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
+		/*
 		d := dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
 			if err == nil && uri != nil {
 				srcEntry.SetText(uri.Path())
@@ -43,6 +62,19 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		windowSize := w.Canvas().Size()
 		d.Resize(fyne.NewSize(windowSize.Width*0.8, windowSize.Height*0.8))
 		d.Show()
+		*/
+
+		go func() {
+			folder, err := zenity.SelectFile(
+				zenity.Title("Select Folder"),
+				zenity.Directory(),
+				// Decide: We can filter extensions like this
+				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
+			)
+			if err == nil && folder != "" {
+					srcEntry.SetText(folder)
+			}
+		}()
 	})
 
 	browseBtns := container.NewHBox(browseFileBtn, browseFolderBtn)

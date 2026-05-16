@@ -10,9 +10,10 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/ncruces/zenity"
 )
 
 func buildExtractTab(w fyne.Window) fyne.CanvasObject {
@@ -44,42 +45,55 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 	})
 
 	srcBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
-		d := dialog.NewFileOpen(func(uri fyne.URIReadCloser, err error) {
-			if err == nil && uri != nil {
+		// Run in a goroutine so the Fyne UI doesn't freeze while the native dialog is open
+		go func() {
+			file, err := zenity.SelectFile(
+				zenity.Title("Select Archive"),
+				// Decide: We can filter extensions like this
+				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
+			)
+			if err == nil && file != "" {
+				srcEntry.SetText(file)
 
-				srcPath := uri.URI().Path()
-				srcEntry.SetText(srcPath)
-
-				// Get the parent folder URI and set it as default value for destination entry
-				parentURI, err := storage.Parent(uri.URI())
-				if err == nil {
-
-					destPath := parentURI.Path()
-
-					if createSubfolderCheck.Checked {
-						baseName := strings.TrimSuffix(uri.URI().Name(), uri.URI().Extension())
-						destPath = filepath.Join(destPath, baseName)
-					}
-					destEntry.SetText(destPath)
-
+				// Determine destination path automatically
+				destPath := filepath.Dir(file)
+				if createSubfolderCheck.Checked {
+					baseName := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+					destPath = filepath.Join(destPath, baseName)
 				}
-				uri.Close()
+				destEntry.SetText(destPath)
 			}
-		}, w)
-		windowSize := w.Canvas().Size()
-		d.Resize(fyne.NewSize(windowSize.Width*0.8, windowSize.Height*0.8))
-		d.Show()
+		}()
 	})
 
 	destBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
-		d := dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
-			if err == nil && uri != nil {
-				destEntry.SetText(uri.Path())
+		// Capture the current text while we are still on the main UI thread
+		currentPath := destEntry.Text
+		
+		// Run in a goroutine to prevent UI blocking
+		go func() {
+			// Set up default Zenity options
+			opts := []zenity.Option{
+				zenity.Title("Select Destination"),
+				zenity.Directory(), // Tell Zenity to open a folder picker
 			}
-		}, w)
-		windowSize := w.Canvas().Size()
-		d.Resize(fyne.NewSize(windowSize.Width*0.8, windowSize.Height*0.8))
-		d.Show()
+
+			// If there is already a path, tell Zenity to start there
+			if currentPath != "" {
+				// ncruces/zenity requires directory paths to end with a separator
+				if !strings.HasSuffix(currentPath, string(filepath.Separator)) {
+					currentPath += string(filepath.Separator)
+				}
+				opts = append(opts, zenity.Filename(currentPath))
+			}
+
+			// Pass the options into SelectFile
+			folder, err := zenity.SelectFile(opts...)
+			
+			if err == nil && folder != "" {
+				destEntry.SetText(folder)
+			}
+		}()
 	})
 
 	extractBtn := widget.NewButtonWithIcon("Extract", theme.DownloadIcon(), func() {
