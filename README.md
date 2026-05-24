@@ -1,4 +1,5 @@
-# 7z GUI Linux
+# 7GL
+7z GUI Linux
 
 A GUI for 7-zip on Linux with all the advanced features that you are used to. Doesn't require any dependency to run other than the 7-zip backend.
 
