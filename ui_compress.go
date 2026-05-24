@@ -15,7 +15,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ncruces/zenity"
-
 )
 
 func buildCompressTab(w fyne.Window) fyne.CanvasObject {
@@ -24,20 +23,6 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	srcEntry.PlaceHolder = "Select a file or folder to compress..."
 
 	browseFileBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
-		/*
-		d := dialog.NewFileOpen(func(uri fyne.URIReadCloser, err error) {
-			if err == nil && uri != nil {
-				srcEntry.SetText(uri.URI().Path())
-				setInfo("Selected file to archive: " + uri.URI().Path())
-				uri.Close() // Essential for Fyne: Clean up internal file handles.
-			}
-		}, w)
-		windowSize := w.Canvas().Size()
-		d.Resize(fyne.NewSize(windowSize.Width*0.8, windowSize.Height*0.8))
-		d.Show()
-		*/
-
-
 		go func() {
 			file, err := zenity.SelectFile(
 				zenity.Title("Select File"),
@@ -45,25 +30,13 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
 			)
 			if err == nil && file != "" {
-					srcEntry.SetText(file)
+				srcEntry.SetText(file)
 			}
 		}()
 
 	})
 
 	browseFolderBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
-		/*
-		d := dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
-			if err == nil && uri != nil {
-				srcEntry.SetText(uri.Path())
-				setInfo("Selected folder to archive: " + uri.Path())
-			}
-		}, w)
-		windowSize := w.Canvas().Size()
-		d.Resize(fyne.NewSize(windowSize.Width*0.8, windowSize.Height*0.8))
-		d.Show()
-		*/
-
 		go func() {
 			folder, err := zenity.SelectFile(
 				zenity.Title("Select Folder"),
@@ -72,7 +45,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
 			)
 			if err == nil && folder != "" {
-					srcEntry.SetText(folder)
+				srcEntry.SetText(folder)
 			}
 		}()
 	})
@@ -390,7 +363,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		)
 
 		// Switch to Status tab
-		tabs.SelectIndex(2)
+		tabs.Select(2)
 		// Passing arguments as args, title as "Compressing", window context as w, and nil for onSuccess callback
 		startOperation(args, "Compressing", w, nil)
 	})
@@ -421,7 +394,10 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	)
 
 	return container.NewPadded(container.NewBorder(
-		nil,
+		container.NewVBox(
+			widget.NewRichTextFromMarkdown("## Compress"),
+			widget.NewSeparator(),
+		),
 		container.NewVBox(
 			widget.NewSeparator(),
 			container.NewHBox(

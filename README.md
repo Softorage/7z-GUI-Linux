@@ -20,6 +20,7 @@ Please leave a star if you find it useful!
 - [Usage](#usage)
 - [Features](#features)
 - [Screenshots](#screenshots)
+- [Building](#Building)
 - [FAQ](#faq)
 - [Credits](#credits)
 - [Other tools](#other-tools)
@@ -77,6 +78,39 @@ Note: If you face any crashes, please run debug build through command line, and 
 | Compress | ![Voltage Offsets](/dist/images/screenshots/v0.1.5/Compress.png) |
 | Extract | ![Power Limit](/dist/images/screenshots/v0.1.5/Extract.png) |
 | Status | ![Power Limit](/dist/images/screenshots/v0.1.5/Status.png) |
+
+## Building
+
+- Make sure you have ssh set up.
+- Clone the repo
+   ```
+   git clone git@github.com:Softorage/7z-GUI-Linux.git
+   ```
+- Move into the directory and run the build command.
+   ```
+   cd 7z-GUI-Linux
+   go build
+   ```
+
+**Note:**  
+When making changes to the code, it is recommended to run a set of standard Go commands.
+```
+# Format the code.
+go fmt
+
+# Very handy in case a library that is not imported is used.
+# `goimports` updates the import statements for you and formats the code.
+# -w writes the changes to the files.
+# . runs it on the current directory and subdirectories.
+goimports -w .
+
+# Check for common mistakes like unreachable code, printf format mismatches, and shadowed variables with `go vet`.
+# You can also run `golangci-lint run` for a comprehensive check. It is a "meta-linter" that runs go vet, staticcheck, and dozens of other tools simultaneously.
+go vet .
+
+# Remove unused dependencies and adds missing ones to your go.mod and go.sum files.
+go mod tidy
+```
 
 ## FAQ
 

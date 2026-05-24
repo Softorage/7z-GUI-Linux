@@ -69,7 +69,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 	destBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
 		// Capture the current text while we are still on the main UI thread
 		currentPath := destEntry.Text
-		
+
 		// Run in a goroutine to prevent UI blocking
 		go func() {
 			// Set up default Zenity options
@@ -89,7 +89,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 
 			// Pass the options into SelectFile
 			folder, err := zenity.SelectFile(opts...)
-			
+
 			if err == nil && folder != "" {
 				destEntry.SetText(folder)
 			}
@@ -139,7 +139,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 						// Append the -p switch with the user's password
 						// Note: os/exec handles spaces safely automatically, no manual shell-escaping needed
 						args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwdEntry.Text}
-						tabs.SelectIndex(2)
+						tabs.Select(2)
 						startOperation(args, "Extracting", w, onSuccess)
 					} else {
 						setInfo("Extraction cancelled.")
@@ -151,7 +151,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 			} else {
 				// Proceed normally if no password is required
 				args := []string{"x", src, "-o" + dest, "-bsp1", "-y"}
-				tabs.SelectIndex(2)
+				tabs.Select(2)
 				startOperation(args, "Extracting", w, onSuccess)
 			}
 		}()
@@ -165,6 +165,8 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 	)
 
 	return container.NewPadded(container.NewVBox(
+		widget.NewRichTextFromMarkdown("## Extract"),
+		widget.NewSeparator(),
 		form,
 		layout.NewSpacer(),
 		container.NewHBox(layout.NewSpacer(), extractBtn),

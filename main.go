@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"image/color"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,8 +11,11 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -18,44 +23,151 @@ func main() {
 	a := app.New()
 	a.SetIcon(resourceIconPng)
 	w := a.NewWindow("7-Zip GUI for Linux")
-	w.Resize(fyne.NewSize(800, 650))
+	w.Resize(fyne.NewSize(900, 650))
 
 	// Bottom Info Bar
 	infoBar = widget.NewLabel("Ready. Interact with an option to see its description.")
 	infoBar.Alignment = fyne.TextAlignCenter
 	infoBar.Wrapping = fyne.TextWrapWord // Properly wraps text instead of resizing window
 
-	// Build Tabs
+	// Build Tab Contents
 	compressTab := buildCompressTab(w)
 	extractTab := buildExtractTab(w)
 	statusTab := buildStatusTab(w)
 
-	tabs = container.NewAppTabs(
-		container.NewTabItem("Compress", compressTab),
-		container.NewTabItem("Extract", extractTab),
-		container.NewTabItem("Status", statusTab),
+	// Create a Max container that will act as the dynamic main content area
+	contentArea := container.NewMax()
+
+	// Construct Sidebar Tabs Menu
+	titles := []string{"Compress", "Extract", "Status"}
+	tabs = widget.NewList(
+		func() int { return len(titles) },
+		func() fyne.CanvasObject {
+			lbl := widget.NewLabel("")
+			lbl.TextStyle = fyne.TextStyle{Bold: true}
+			return container.NewPadded(lbl)
+		},
+		func(i widget.ListItemID, o fyne.CanvasObject) {
+			// Updating list elements safely
+			o.(*fyne.Container).Objects[0].(*widget.Label).SetText(titles[i])
+		},
 	)
 
-	// Intercept tab switching to lock user on Status tab during operations
-	tabs.OnSelected = func(t *container.TabItem) {
+	// Handle switching tab views
+	tabs.OnSelected = func(id widget.ListItemID) {
 		stateMu.RLock()
 		running := isOperationRunning
 		stateMu.RUnlock()
 
-		if running && t.Text != "Status" {
+		if running && id != 2 { // Index 2 is "Status"
 			setInfo("Action locked: Operation currently in progress.")
-			tabs.SelectIndex(2) // Force back to Status (index 2)
+			tabs.Select(2) // Force back to Status
+			return
 		}
+
+		// Swap out the objects inside the main content area
+		switch id {
+		case 0:
+			contentArea.Objects = []fyne.CanvasObject{compressTab}
+		case 1:
+			contentArea.Objects = []fyne.CanvasObject{extractTab}
+		case 2:
+			contentArea.Objects = []fyne.CanvasObject{statusTab}
+		}
+		contentArea.Refresh()
 	}
 
+	// Construct Sidebar Elements
+	// Top: App Name and version
+	appLabel := widget.NewRichText(
+		&widget.TextSegment{
+			Text: "7GL",
+			Style: widget.RichTextStyle{
+				SizeName:  theme.SizeNameHeadingText,
+				TextStyle: fyne.TextStyle{Bold: true},
+				Alignment: fyne.TextAlignCenter,
+			},
+		},
+		&widget.TextSegment{
+			Text: fmt.Sprintf("\nversion %s", version),
+			Style: widget.RichTextStyle{
+				SizeName:  theme.SizeNameCaptionText,
+				ColorName: theme.ColorNamePlaceHolder,
+				Alignment: fyne.TextAlignCenter,
+			},
+		},
+	)
+
+	// Center the text using an HBox with spacers on both sides
+	centeredAppLabel := container.NewHBox(layout.NewSpacer(), appLabel, layout.NewSpacer())
+
+	sidebarTop := container.NewVBox(
+		container.NewPadded(centeredAppLabel),
+		widget.NewLabel(""),
+	)
+
+	// Bottom: Github URL, Sponsor URL & Version
+	githubURL, _ := url.Parse("https://github.com/Softorage/7z-GUI-Linux")
+	sponsorURL, _ := url.Parse("https://github.com/sponsors/Softorage")
+
+	githubBtn := widget.NewButtonWithIcon("View Source", theme.InfoIcon(), func() { a.OpenURL(githubURL) })
+	githubBtn.IconPlacement = widget.ButtonIconTrailingText
+	githubBtn.Importance = widget.LowImportance
+	githubBtn.Alignment = widget.ButtonAlignLeading
+
+	sponsorBtn := widget.NewButton("Sponsor", func() { a.OpenURL(sponsorURL) })
+	sponsorBtn.Importance = widget.LowImportance
+	sponsorBtn.Alignment = widget.ButtonAlignLeading
+
+	tabsBottom := container.NewVBox(
+		container.NewPadded(githubBtn),
+		container.NewPadded(sponsorBtn),
+	)
+
+	aboutText := widget.NewRichText(&widget.TextSegment{
+		Text: fmt.Sprintf("A Softorage Project"),
+		Style: widget.RichTextStyle{
+			SizeName:  theme.SizeNameCaptionText,
+			ColorName: theme.ColorNamePlaceHolder,
+		},
+	})
+
+	sidebarBottom := container.NewVBox(
+		tabsBottom,
+		container.NewCenter(aboutText),
+	)
+
+	sidebarContent := container.NewBorder(sidebarTop, sidebarBottom, nil, nil, tabs)
+
+	// Create Sidebar Background
+	// A translucent gray (alpha=25) creates a subtle contrast for both Light and Dark themes.
+	sidebarBg := canvas.NewRectangle(color.NRGBA{R: 128, G: 128, B: 128, A: 25})
+	// Force a minimum width to make the sidebar cozier/wider (180px width)
+	sidebarBg.SetMinSize(fyne.NewSize(180, 0))
+
+	// Combine the background color and the sidebar content
+	sidebar := container.NewMax(sidebarBg, sidebarContent)
+
+	// Combine Sidebar (Left) and Main Content (Right)
+	mainLayout := container.NewBorder(
+		nil,
+		nil,
+		sidebar,
+		nil,
+		container.NewBorder(
+			nil,
+			container.NewVBox(widget.NewSeparator(), infoBar),
+			nil,
+			nil,
+			contentArea,
+		),
+	)
+
 	// Layout Main Window
-	w.SetContent(container.NewBorder(
-		nil,
-		container.NewVBox(widget.NewSeparator(), infoBar),
-		nil,
-		nil,
-		tabs,
-	))
+	w.SetContent(mainLayout)
+
+	// Pre-select first tab
+	tabs.Select(0)
 
 	// Dependency check
 	checkDependencies(w)

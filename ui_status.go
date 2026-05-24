@@ -98,7 +98,7 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	// Bottom Section: History and Log Tabs
 	historySection := container.NewBorder(
 		nil, nil, nil, nil,
-		historyList,
+		container.NewPadded(historyList),
 	)
 
 	// Initialize the Console Log Text Box
@@ -106,6 +106,8 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	consoleLog.Wrapping = fyne.TextWrapWord
 	consoleLog.TextStyle = fyne.TextStyle{Monospace: true}
 	// Note: We leave it enabled so users can select and copy the text
+
+	consoleLog.PlaceHolder = "7GL Console Initialized\n--------------------------------------------\n> Waiting for process output..."
 
 	// Auto-scroll to the bottom whenever text updates.
 	// Hooking into OnChanged assures that it will execute cleanly after SetText() resets it.
@@ -121,17 +123,23 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 
 	logSection := container.NewBorder(
 		nil, nil, nil, nil,
-		consoleLog,
+		container.NewPadded(consoleLog),
 	)
 
-	bottomTabs := container.NewAppTabs(
+	bottomTabs := container.NewPadded(container.NewAppTabs(
 		container.NewTabItem("Operation History", historySection),
 		container.NewTabItem("Log", logSection),
-	)
+	))
 
 	// Use Split so user can resize the status vs tab area
 	split := container.NewVSplit(currentStatus, bottomTabs)
 	split.Offset = 0.3 // Give current status 30% of space initially
 
-	return container.NewPadded(split)
+	return container.NewPadded(
+		container.NewVBox(
+			widget.NewRichTextFromMarkdown("## Status"),
+			widget.NewSeparator(),
+			split,
+		),
+	)
 }

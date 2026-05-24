@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -19,7 +18,7 @@ type operationLog struct {
 
 var (
 	infoBar     *widget.Label
-	tabs        *container.AppTabs
+	tabs        *widget.List
 	statusLog   *widget.Label
 	progressBar *widget.ProgressBar
 	pauseBtn    *widget.Button
