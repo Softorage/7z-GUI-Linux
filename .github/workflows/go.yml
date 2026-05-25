@@ -81,8 +81,9 @@ jobs:
             --arch ${arch} \
             --env GOTOOLCHAIN=auto \
             --icon "cmd/assets/logo.png" \
-            --ldflags="-s -w '-X=github.com/softorage/7z-gui-linux/cmd.version=${{ env.GIT_TAG }}'" \
+            --ldflags="-X=github.com/softorage/7z-gui-linux/cmd.version=${{ env.GIT_TAG }}" \
             --name "${NAME}" \
+            --release
             ./cmd
 
           ls -R fyne-cross
