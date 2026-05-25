@@ -102,28 +102,28 @@ jobs:
           mv "${RAW_BINARY_OUTPUT}" "${STAGING_DIR}/${NAME}"
           echo "Done: Release binary moved to staging."
 
-          echo "------------   DEBUG build...    ------------"
-          fyne-cross linux \
-            --arch ${arch} \
-            --env GOTOOLCHAIN=auto \
-            --icon "cmd/assets/logo.png" \
-            --ldflags="-X=github.com/softorage/7z-gui-linux/cmd.version=${{ env.GIT_TAG }}" \
-            --name "${NAME}-debug" \
-            ./cmd
+          #echo "------------   DEBUG build...    ------------"
+          #fyne-cross linux \
+          #  --arch ${arch} \
+          #  --env GOTOOLCHAIN=auto \
+          #  --icon "cmd/assets/logo.png" \
+          #  --ldflags="-X=github.com/softorage/7z-gui-linux/cmd.version=${{ env.GIT_TAG }}" \
+          #  --name "${NAME}-debug" \
+          #  ./cmd
 
-          ls -R fyne-cross
+          #ls -R fyne-cross
             
-          echo "Checking if debug binary exists before proceeding"
+          #echo "Checking if debug binary exists before proceeding"
           # NOTE: The binary is still named $NAME because --name only changes Fyne's app metadata, not the executable file name
-          if [ ! -f "${RAW_BINARY_OUTPUT}" ]; then
-            echo "Error: Debug binary for ${arch} not found at ${RAW_BINARY_OUTPUT}"
-            exit 1
-          fi
+          #if [ ! -f "${RAW_BINARY_OUTPUT}" ]; then
+          #  echo "Error: Debug binary for ${arch} not found at ${RAW_BINARY_OUTPUT}"
+          #  exit 1
+          #fi
           
           # Move debug binary to its staging directory, manually renaming it to have the -debug suffix
-          mv "${RAW_BINARY_OUTPUT}" "${STAGING_DEBUG_DIR}/${NAME}-debug"
-          echo "Done: Debug binary moved to debug-staging."
-          echo "------------ fyne-cross worked hard. ------------"
+          #mv "${RAW_BINARY_OUTPUT}" "${STAGING_DEBUG_DIR}/${NAME}-debug"
+          #echo "Done: Debug binary moved to debug-staging."
+          #echo "------------ fyne-cross worked hard. ------------"
 
           echo "Copy supporting files"
           cp ./dist/release/install.sh "${STAGING_DIR}/" || true
@@ -168,9 +168,9 @@ jobs:
           TAR_NAME="${NAME}-${arch}-${{ env.GIT_TAG }}.tar.xz"
           echo "Compressing to ${TAR_NAME}..."
           tar -cJf "./public/${TAR_NAME}" -C "${STAGING_DIR}" .
-          tar -cJf "./public/debug-build-${TAR_NAME}" -C "${STAGING_DEBUG_DIR}" .
+          #tar -cJf "./public/debug-build-${TAR_NAME}" -C "${STAGING_DEBUG_DIR}" .
           sha256sum "./public/${TAR_NAME}" > "./public/${TAR_NAME}.sha256"
-          sha256sum "./public/debug-build-${TAR_NAME}" > "./public/debug-build-${TAR_NAME}.sha256"
+          #sha256sum "./public/debug-build-${TAR_NAME}" > "./public/debug-build-${TAR_NAME}.sha256"
           echo "Done"
 
           # Cleanup for next iteration
