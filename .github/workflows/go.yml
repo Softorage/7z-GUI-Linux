@@ -86,8 +86,10 @@ jobs:
             --ldflags="-X=main.version=${{ env.GIT_TAG }}" \
             --name "${NAME}" \
             ./cmd
+
+          ls -R fyne-cross
           
-          RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/${NAME}"
+          RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/cmd"
           
           echo "Checking if release binary exists before proceeding"
           if [ ! -f "${RAW_BINARY_OUTPUT}" ]; then
@@ -107,6 +109,8 @@ jobs:
             --ldflags="-X=main.version=${{ env.GIT_TAG }}" \
             --name "${NAME}-debug" \
             ./cmd
+
+          ls -R fyne-cross
             
           echo "Checking if debug binary exists before proceeding"
           # NOTE: The binary is still named $NAME because --name only changes Fyne's app metadata, not the executable file name
