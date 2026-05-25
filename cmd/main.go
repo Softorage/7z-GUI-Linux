@@ -110,7 +110,7 @@ func main() {
 
 	// Bottom: Github URL, Sponsor URL & Version
 	sourceCodeURL, _ := url.Parse("https://github.com/Softorage/7z-GUI-Linux")
-	sponsorURL, _ := url.Parse("https://github.com/sponsors/Softorage")
+	sponsorURL, _ := url.Parse("https://rzp.io/rzp/hY39lZGa")
 
 	//sourceCodeBtn := widget.NewButtonWithIcon("View Source", resourceSourceCodeSvg, func() { a.OpenURL(sourceCodeURL) })
 	sourceCodeBtn := widget.NewButton("View Source", func() { a.OpenURL(sourceCodeURL) })
