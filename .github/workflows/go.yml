@@ -82,13 +82,12 @@ jobs:
           fyne-cross linux \
             --arch ${arch} \
             --env GOTOOLCHAIN=auto \
-            --icon "cmd/assets/logo.png" \
-            --ldflags="-X 'cmd/main.version=${{ env.GIT_TAG }}'" \
-            --name "${NAME}" \
-            ./cmd
+            --icon "assets/logo.png" \
+            --ldflags="-X=main.version=${{ env.GIT_TAG }}" \
+            --name "${NAME}"
           
           # fyne-cross names the binary after name of the folder in which main package is
-          RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/cmd"
+          RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/7z-GUI-Linux"
           
           echo "Checking if release binary exists before proceeding"
           if [ ! -f "${RAW_BINARY_OUTPUT}" ]; then
@@ -104,10 +103,9 @@ jobs:
           #fyne-cross linux \
           #  --arch ${arch} \
           #  --env GOTOOLCHAIN=auto \
-          #  --icon "cmd/assets/logo.png" \
-          #  --ldflags="-X=cmd/main.version=${{ env.GIT_TAG }}" \
-          #  --name "${NAME}-debug" \
-          #  ./cmd
+          #  --icon "assets/logo.png" \
+          #  --ldflags="-X=main.version=${{ env.GIT_TAG }}" \
+          #  --name "${NAME}-debug"
 
           # see the folder structure
           #ls -R fyne-cross
@@ -128,7 +126,7 @@ jobs:
           cp ./dist/release/install.sh "${STAGING_DIR}/" || true
           cp ./dist/release/update.sh "${STAGING_DIR}/" || true
           cp ./dist/release/uninstall.sh "${STAGING_DIR}/" || true
-          cp ./cmd/assets/logo.png "${STAGING_DIR}/${NAME}.png" || true
+          cp ./assets/logo.png "${STAGING_DIR}/${NAME}.png" || true
           cp ./dist/release/7z-GUI-Linux.desktop "${STAGING_DIR}/" || true
           echo "Done"
 

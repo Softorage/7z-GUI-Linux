@@ -19,7 +19,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// check if new version available? and provide instructions to update in a dialog.
+// TODO: check if new version available and provide instructions to update in a dialog.
 
 func main() {
 	a := app.New()
