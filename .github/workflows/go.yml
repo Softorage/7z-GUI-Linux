@@ -83,7 +83,7 @@ jobs:
             --arch ${arch} \
             --env GOTOOLCHAIN=auto \
             --icon "cmd/assets/logo.png" \
-            --ldflags="-X=cmd/main.version=${{ env.GIT_TAG }}" \
+            --ldflags="-X 'cmd/main.version=${{ env.GIT_TAG }}'" \
             --name "${NAME}" \
             ./cmd
           
@@ -122,7 +122,7 @@ jobs:
           # Move debug binary to its staging directory, manually renaming it to have the -debug suffix
           #mv "${RAW_BINARY_OUTPUT}" "${STAGING_DEBUG_DIR}/${NAME}-debug"
           #echo "Done: Debug binary moved to debug-staging."
-          #echo "------------ fyne-cross worked hard. ------------"
+          echo "------------ fyne-cross worked hard. ------------"
 
           echo "Copy supporting files"
           cp ./dist/release/install.sh "${STAGING_DIR}/" || true
