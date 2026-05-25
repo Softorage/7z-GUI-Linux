@@ -77,13 +77,14 @@ jobs:
 
           echo "------------ fyne-cross working... ------------"
           echo "------------   RELEASE BUILD...    ------------"
+          # we have removed -s and -w from ldflags for now as fyne-cross has issues passing ldflags to Go
+          # -release flag doesn't work. https://github.com/fyne-io/fyne-cross/issues/272
           fyne-cross linux \
             --arch ${arch} \
             --env GOTOOLCHAIN=auto \
             --icon "cmd/assets/logo.png" \
             --ldflags="-X=github.com/softorage/7z-gui-linux/cmd.version=${{ env.GIT_TAG }}" \
             --name "${NAME}" \
-            --release \
             ./cmd
 
           ls -R fyne-cross
