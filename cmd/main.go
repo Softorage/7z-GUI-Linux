@@ -19,9 +19,11 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+// check if new version available? and provide instructions to update in a dialog.
+
 func main() {
 	a := app.New()
-	a.SetIcon(resourceIconPng)
+	a.SetIcon(resourceLogoPng)
 	w := a.NewWindow("7-Zip GUI for Linux")
 	w.Resize(fyne.NewSize(900, 650))
 
@@ -107,20 +109,21 @@ func main() {
 	)
 
 	// Bottom: Github URL, Sponsor URL & Version
-	githubURL, _ := url.Parse("https://github.com/Softorage/7z-GUI-Linux")
+	sourceCodeURL, _ := url.Parse("https://github.com/Softorage/7z-GUI-Linux")
 	sponsorURL, _ := url.Parse("https://github.com/sponsors/Softorage")
 
-	githubBtn := widget.NewButtonWithIcon("View Source", theme.InfoIcon(), func() { a.OpenURL(githubURL) })
-	githubBtn.IconPlacement = widget.ButtonIconTrailingText
-	githubBtn.Importance = widget.LowImportance
-	githubBtn.Alignment = widget.ButtonAlignLeading
+	//sourceCodeBtn := widget.NewButtonWithIcon("View Source", resourceSourceCodeSvg, func() { a.OpenURL(sourceCodeURL) })
+	sourceCodeBtn := widget.NewButton("View Source", func() { a.OpenURL(sourceCodeURL) })
+	//sourceCodeBtn.IconPlacement = widget.ButtonIconLeadingText
+	sourceCodeBtn.Importance = widget.LowImportance
+	sourceCodeBtn.Alignment = widget.ButtonAlignLeading
 
 	sponsorBtn := widget.NewButton("Sponsor", func() { a.OpenURL(sponsorURL) })
 	sponsorBtn.Importance = widget.LowImportance
 	sponsorBtn.Alignment = widget.ButtonAlignLeading
 
 	tabsBottom := container.NewVBox(
-		container.NewPadded(githubBtn),
+		container.NewPadded(sourceCodeBtn),
 		container.NewPadded(sponsorBtn),
 	)
 
