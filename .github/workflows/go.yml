@@ -83,7 +83,7 @@ jobs:
             --arch ${arch} \
             --env GOTOOLCHAIN=auto \
             --icon "assets/logo.png" \
-            --ldflags="-X=main.version=${{ env.GIT_TAG }}" \
+            --ldflags="-X 'main.version=${{ env.GIT_TAG }}'" \
             --name "${NAME}"
 
           echo "--- Directory structure for fyne-cross: ---"
