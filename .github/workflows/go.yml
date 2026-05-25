@@ -83,11 +83,9 @@ jobs:
             --arch ${arch} \
             --env GOTOOLCHAIN=auto \
             --icon "cmd/assets/logo.png" \
-            --ldflags="-X=github.com/softorage/7z-gui-linux/cmd.version=${{ env.GIT_TAG }}" \
+            --ldflags="-X=cmd/main.version=${{ env.GIT_TAG }}" \
             --name "${NAME}" \
             ./cmd
-
-          ls -R fyne-cross
           
           # fyne-cross names the binary after name of the folder in which main package is
           RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/cmd"
@@ -107,10 +105,11 @@ jobs:
           #  --arch ${arch} \
           #  --env GOTOOLCHAIN=auto \
           #  --icon "cmd/assets/logo.png" \
-          #  --ldflags="-X=github.com/softorage/7z-gui-linux/cmd.version=${{ env.GIT_TAG }}" \
+          #  --ldflags="-X=cmd/main.version=${{ env.GIT_TAG }}" \
           #  --name "${NAME}-debug" \
           #  ./cmd
 
+          # see the folder structure
           #ls -R fyne-cross
             
           #echo "Checking if debug binary exists before proceeding"
