@@ -1,4 +1,4 @@
-module 7z-GUI-Linux
+module github.com/softorage/7z-gui-linux
 
 go 1.24
 

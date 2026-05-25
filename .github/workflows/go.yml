@@ -81,14 +81,13 @@ jobs:
             --arch ${arch} \
             --env GOTOOLCHAIN=auto \
             --icon "cmd/assets/logo.png" \
-            --ldflags="-s" \
-            --ldflags="-w" \
-            --ldflags="-X=main.version=${{ env.GIT_TAG }}" \
+            --ldflags="-s -w -X 'github.com/softorage/7z-gui-linux/cmd.version=${{ env.GIT_TAG }}'" \
             --name "${NAME}" \
             ./cmd
 
           ls -R fyne-cross
           
+          # fyne-cross names the binary after name of the folder in which main package is
           RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/cmd"
           
           echo "Checking if release binary exists before proceeding"
@@ -106,7 +105,7 @@ jobs:
             --arch ${arch} \
             --env GOTOOLCHAIN=auto \
             --icon "cmd/assets/logo.png" \
-            --ldflags="-X=main.version=${{ env.GIT_TAG }}" \
+            --ldflags="-X 'github.com/softorage/7z-gui-linux/cmd.version=${{ env.GIT_TAG }}'" \
             --name "${NAME}-debug" \
             ./cmd
 
