@@ -83,7 +83,7 @@ jobs:
             --icon "cmd/assets/logo.png" \
             --ldflags="-X=github.com/softorage/7z-gui-linux/cmd.version=${{ env.GIT_TAG }}" \
             --name "${NAME}" \
-            --release
+            --release \
             ./cmd
 
           ls -R fyne-cross
