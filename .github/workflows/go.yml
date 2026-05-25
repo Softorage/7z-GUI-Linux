@@ -85,7 +85,11 @@ jobs:
             --icon "assets/logo.png" \
             --ldflags="-X=main.version=${{ env.GIT_TAG }}" \
             --name "${NAME}"
-          
+
+          echo "--- Directory structure for fyne-cross: ---"
+          ls -R fyne-cross
+          echo "--- End of directory structure ---"
+
           # fyne-cross names the binary after name of the folder in which main package is
           RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/7z-GUI-Linux"
           
