@@ -22,7 +22,7 @@ import (
 // TODO: check if new version available and provide instructions to update in a dialog.
 
 func main() {
-	a := app.New()
+	a := app.NewWithID("com.softorage.7gl")
 	a.SetIcon(resourceLogoPng)
 	w := a.NewWindow("7-Zip GUI for Linux")
 	w.Resize(fyne.NewSize(900, 650))
