@@ -49,15 +49,15 @@ jobs:
         sudo apt-get update
         go install github.com/fyne-io/fyne-cross@latest # Use the fyne-cross tool
 
+    - name: Set up GIT_TAG for Dynamic Folder Names
+      run: |
+        # Save to GITHUB_ENV so subsequent steps can use these variables
+        echo "GIT_TAG=$(git describe --tags --always)" >> $GITHUB_ENV
+
     - name: Inject Git Tag into Version
       run: |
         echo "package main" > version.go
         echo "var version string = \"${{ env.GIT_TAG }}\"" >> version.go
-
-    - name: Set up Dynamic Folder Names
-      run: |
-        # Save to GITHUB_ENV so subsequent steps can use these variables
-        echo "GIT_TAG=$(git describe --tags --always)" >> $GITHUB_ENV
 
     - name: Cross-Compile, Optimize, and Compress
       env:
