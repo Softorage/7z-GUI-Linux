@@ -80,10 +80,10 @@ jobs:
           echo "------------   RELEASE BUILD...    ------------"
           # we have removed -s and -w from ldflags for now as fyne-cross has issues passing ldflags to Go
           # -release flag doesn't work. https://github.com/fyne-io/fyne-cross/issues/272
-          GOFLAGS="--ldflags=-X=main.version=${{ env.GIT_TAG }}" \
           fyne-cross linux \
             --arch ${arch} \
             --env GOTOOLCHAIN=auto \
+            --env "GOFLAGS=-ldflags=-X=main.version=${{ env.GIT_TAG }}" \
             --icon "assets/logo.png" \
             --name "${NAME}"
 
