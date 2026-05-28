@@ -47,8 +47,12 @@ jobs:
         GOTOOLCHAIN: auto
       run: |
         sudo apt-get update
-        sudo apt-get install -y upx-ucl
         go install github.com/fyne-io/fyne-cross@latest # Use the fyne-cross tool
+
+    - name: Inject Git Tag into Version
+      run: |
+        echo "package main" > version.go
+        echo "var version string = \"${{ env.GIT_TAG }}\"" >> version.go
 
     - name: Set up Dynamic Folder Names
       run: |

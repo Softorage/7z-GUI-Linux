@@ -51,9 +51,6 @@ var (
 
 var root7zCmd string = "7z"
 
-// version is passed at build time
-var version string = "dev"
-
 // setInfo updates the bottom info bar and sets a 6-second timer to clear it.
 func setInfo(text string) {
 	infoMu.Lock()
