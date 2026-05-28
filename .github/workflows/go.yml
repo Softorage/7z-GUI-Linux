@@ -87,7 +87,7 @@ jobs:
           fyne-cross linux \
             --arch ${arch} \
             --env GOTOOLCHAIN=auto \
-            --env "GOFLAGS=-ldflags=-X=main.version=${{ env.GIT_TAG }}" \
+            --tags "no_emoji,no_animations,no_metadata"
             --icon "assets/logo.png" \
             --name "${NAME}"
 
