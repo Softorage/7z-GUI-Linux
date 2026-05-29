@@ -18,15 +18,45 @@ Please leave a star if you find it useful!
 
 ## Table of Contents
 
-- [Usage](#usage)
-- [Features](#features)
 - [Screenshots](#screenshots)
+- [Features](#features)
+- [Usage](#usage)
 - [Building](#Building)
 - [FAQ](#faq)
 - [Credits](#credits)
 - [Other tools](#other-tools)
 - [What is Softorage?](#what-is-softorage)
 - [License](#license)
+
+
+## Screenshots
+
+| Description | Screenshot |
+| --- | --- |
+| Compress | ![Voltage Offsets](/dist/images/screenshots/v0.2.1.25/Compress.png) |
+| Extract | ![Power Limit](/dist/images/screenshots/v0.2.1.25/Extract.png) |
+| Operations History (Status) | ![Power Limit](/dist/images/screenshots/v0.2.1.25/OpHistory_Status.png) |
+| Log (Status) | ![Power Limit](/dist/images/screenshots/v0.2.1.25/Log_Status.png) |
+
+## Features
+
+- Compress and Extract 
+- Supports:
+   - Multiple archive formats
+   - Compression methods
+   - Compression level
+   - Dictionary size
+   - Word size
+   - Block size
+   - CPU threads
+   - Update mode
+   - SFX (self-extracting) archive (.exe)
+   - Compress shared files
+   - Split to volumes
+   - Encryption settings
+- Provides introductory information for various input options
+- Offers familiar GUI to the Windows counterpart.
+
 
 ## Usage
 
@@ -53,32 +83,6 @@ Please leave a star if you find it useful!
 
 Note: If you face any crashes, please run debug build through command line, and recreate the circumstances leading to crash. Share the coutput in command line when opening the issue on GitHub.
 
-## Features
-
-- Compress and Extract 
-- Supports:
-   - Multiple archive formats
-   - Compression methods
-   - Compression level
-   - Dictionary size
-   - Word size
-   - Block size
-   - CPU threads
-   - Update mode
-   - SFX (self-extracting) archive (.exe)
-   - Compress shared files
-   - Split to volumes
-   - Encryption settings
-- Provides introductory information for various input options
-- Offers familiar GUI to the Windows counterpart.
-
-## Screenshots
-
-| Description | Screenshot |
-| --- | --- |
-| Compress | ![Voltage Offsets](/dist/images/screenshots/v0.1.5/Compress.png) |
-| Extract | ![Power Limit](/dist/images/screenshots/v0.1.5/Extract.png) |
-| Status | ![Power Limit](/dist/images/screenshots/v0.1.5/Status.png) |
 
 ## Building
 
