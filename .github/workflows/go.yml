@@ -135,6 +135,7 @@ jobs:
           cp ./dist/release/install.sh "${STAGING_DIR}/" || true
           cp ./dist/release/update.sh "${STAGING_DIR}/" || true
           cp ./dist/release/uninstall.sh "${STAGING_DIR}/" || true
+          cp ./README.md "${STAGING_DIR}/" || true
           cp ./assets/logo.png "${STAGING_DIR}/${NAME}.png" || true
           cp ./dist/release/7z-GUI-Linux.desktop "${STAGING_DIR}/" || true
           echo "Done"
