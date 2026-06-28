@@ -96,10 +96,7 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	)
 
 	// Bottom Section: History and Log Tabs
-	historySection := container.NewBorder(
-		nil, nil, nil, nil,
-		container.NewPadded(historyList),
-	)
+	historySection := container.NewPadded(historyList)
 
 	// Initialize the Console Log Text Box
 	consoleLog = widget.NewMultiLineEntry()
@@ -121,10 +118,7 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 		consoleLog.CursorRow = lineCount
 	}
 
-	logSection := container.NewBorder(
-		nil, nil, nil, nil,
-		container.NewPadded(consoleLog),
-	)
+	logSection := container.NewPadded(consoleLog)
 
 	bottomTabs := container.NewPadded(container.NewAppTabs(
 		container.NewTabItem("Operation History", historySection),
@@ -135,10 +129,16 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	split := container.NewVSplit(currentStatus, bottomTabs)
 	split.Offset = 0.3 // Give current status 30% of space initially
 
+	// Use Border layout to ensure the 'split' container expands to fill the window
 	return container.NewPadded(
-		container.NewVBox(
-			widget.NewRichTextFromMarkdown("## Status"),
-			widget.NewSeparator(),
+		container.NewBorder(
+			container.NewVBox(
+				widget.NewRichTextFromMarkdown("## Status"),
+				widget.NewSeparator(),
+			),
+			nil,
+			nil,
+			nil,
 			split,
 		),
 	)

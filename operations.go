@@ -158,7 +158,7 @@ func build7zArgs(src, customName string, format string, level string, method str
 func startOperation(args []string, mode string, w fyne.Window, onSuccess func()) {
 	fileName := "Unknown"
 	if len(args) > 1 {
-		fileName = filepath.Base(args[1]) // Get just the filename from path
+		fileName = filepath.Base(args[1]) // Get just the filename from path; TODO: doesn't work with checksum command
 	}
 
 	stateMu.Lock()
@@ -369,33 +369,4 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 			}
 		}
 	}()
-}
-
-// isPasswordProtected tests if the archive requires a password for extraction.
-func isPasswordProtected(archive string) bool {
-	// Execute '7z l' (List) with a dummy password. This is fast and will reveal
-	// if the file is encrypted without extracting anything.
-	cmd := exec.Command(root7zCmd, "l", "-slt", archive, "-pDummyPassword_123456789")
-	out, err := cmd.CombinedOutput()
-
-	outStr := string(out)
-	lowerOut := strings.ToLower(outStr)
-
-	if err != nil {
-		// If the header itself is encrypted, 7-zip will fail to list files
-		// and output an error mentioning "wrong password" or "encrypted".
-		if strings.Contains(lowerOut, "wrong password") ||
-			strings.Contains(lowerOut, "encrypted archive") ||
-			strings.Contains(lowerOut, "error in encrypted file") {
-			return true
-		}
-	}
-
-	// For archives where headers are NOT encrypted but the files inside are,
-	// 7-zip will successfully list the contents. We check for the 'Encrypted = +' flag.
-	if strings.Contains(outStr, "\nEncrypted = +") {
-		return true
-	}
-
-	return false
 }

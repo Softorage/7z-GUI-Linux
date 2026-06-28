@@ -35,13 +35,19 @@ func main() {
 	// Build Tab Contents
 	compressTab := buildCompressTab(w)
 	extractTab := buildExtractTab(w)
+	checksumTab := buildChecksumTab(w)
 	statusTab := buildStatusTab(w)
 
 	// Create a Max container that will act as the dynamic main content area
 	contentArea := container.NewMax()
 
 	// Construct Sidebar Tabs Menu
-	titles := []string{"Compress", "Extract", "Status"}
+	titles := make([]string, 4)
+	titles[CompressTabRank] = "Compress"
+	titles[ExtractTabRank] = "Extract"
+	titles[ChecksumTabRank] = "Checksum"
+	titles[StatusTabRank] = "Status"
+
 	tabs = widget.NewList(
 		func() int { return len(titles) },
 		func() fyne.CanvasObject {
@@ -61,19 +67,21 @@ func main() {
 		running := isOperationRunning
 		stateMu.RUnlock()
 
-		if running && id != 2 { // Index 2 is "Status"
+		if running && id != StatusTabRank {
 			setInfo("Action locked: Operation currently in progress.")
-			tabs.Select(2) // Force back to Status
+			tabs.Select(StatusTabRank) // Force back to Status
 			return
 		}
 
 		// Swap out the objects inside the main content area
 		switch id {
-		case 0:
+		case CompressTabRank:
 			contentArea.Objects = []fyne.CanvasObject{compressTab}
-		case 1:
+		case ExtractTabRank:
 			contentArea.Objects = []fyne.CanvasObject{extractTab}
-		case 2:
+		case ChecksumTabRank:
+			contentArea.Objects = []fyne.CanvasObject{checksumTab}
+		case StatusTabRank:
 			contentArea.Objects = []fyne.CanvasObject{statusTab}
 		}
 		contentArea.Refresh()
@@ -170,7 +178,7 @@ func main() {
 	w.SetContent(mainLayout)
 
 	// Pre-select first tab
-	tabs.Select(0)
+	tabs.Select(CompressTabRank)
 
 	// Dependency check
 	checkDependencies(w)

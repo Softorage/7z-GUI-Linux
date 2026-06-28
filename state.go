@@ -51,6 +51,14 @@ var (
 
 var root7zCmd string = "7z"
 
+// Tab indices to avoid magic numbers and simplify reordering
+const (
+	CompressTabRank = 0
+	ExtractTabRank  = 1
+	ChecksumTabRank = 2
+	StatusTabRank   = 3
+)
+
 // setInfo updates the bottom info bar and sets a 6-second timer to clear it.
 func setInfo(text string) {
 	infoMu.Lock()

@@ -363,7 +363,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		)
 
 		// Switch to Status tab
-		tabs.Select(2)
+		tabs.Select(StatusTabRank)
 		// Passing arguments as args, title as "Compressing", window context as w, and nil for onSuccess callback
 		startOperation(args, "Compressing", w, nil)
 	})

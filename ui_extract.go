@@ -139,7 +139,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 						// Append the -p switch with the user's password
 						// Note: os/exec handles spaces safely automatically, no manual shell-escaping needed
 						args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwdEntry.Text}
-						tabs.Select(2)
+						tabs.Select(StatusTabRank)
 						startOperation(args, "Extracting", w, onSuccess)
 					} else {
 						setInfo("Extraction cancelled.")
@@ -151,7 +151,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 			} else {
 				// Proceed normally if no password is required
 				args := []string{"x", src, "-o" + dest, "-bsp1", "-y"}
-				tabs.Select(2)
+				tabs.Select(StatusTabRank)
 				startOperation(args, "Extracting", w, onSuccess)
 			}
 		}()
@@ -171,4 +171,33 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 		layout.NewSpacer(),
 		container.NewHBox(layout.NewSpacer(), extractBtn),
 	))
+}
+
+// isPasswordProtected tests if the archive requires a password for extraction.
+func isPasswordProtected(archive string) bool {
+	// Execute '7z l' (List) with a dummy password. This is fast and will reveal
+	// if the file is encrypted without extracting anything.
+	cmd := exec.Command(root7zCmd, "l", "-slt", archive, "-pDummyPassword_123456789")
+	out, err := cmd.CombinedOutput()
+
+	outStr := string(out)
+	lowerOut := strings.ToLower(outStr)
+
+	if err != nil {
+		// If the header itself is encrypted, 7-zip will fail to list files
+		// and output an error mentioning "wrong password" or "encrypted".
+		if strings.Contains(lowerOut, "wrong password") ||
+			strings.Contains(lowerOut, "encrypted archive") ||
+			strings.Contains(lowerOut, "error in encrypted file") {
+			return true
+		}
+	}
+
+	// For archives where headers are NOT encrypted but the files inside are,
+	// 7-zip will successfully list the contents. We check for the 'Encrypted = +' flag.
+	if strings.Contains(outStr, "\nEncrypted = +") {
+		return true
+	}
+
+	return false
 }
