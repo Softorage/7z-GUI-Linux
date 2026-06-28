@@ -103,20 +103,21 @@ func processLogByte(b byte) {
 	logMu.Lock()
 	defer logMu.Unlock()
 
-	if b == '\n' { // New line
+	switch b {
+	case '\n': // New line
 		logLines = append(logLines, string(currentLogLine))
 		currentLogLine = currentLogLine[:0]
 		logCursor = 0 // Reset cursor for the new line
-	} else if b == '\r' { // Carriage return
+	case '\r': // Carriage return
 		// Instead of clearing the slice (which causes UI flickering),
 		// we just move the cursor back to the start.
 		// Upcoming characters will overwrite the existing ones.
-		logCursor = 0
-	} else if b == '\b' { // Backspace
+		logCursor = 0 // Return to beginning of line (7-Zip progress bars use this)
+	case '\b': // Backspace
 		if logCursor > 0 {
 			logCursor--
 		}
-	} else { // Standard character
+	default: // Standard character
 		if logCursor < len(currentLogLine) {
 			currentLogLine[logCursor] = b
 		} else {
