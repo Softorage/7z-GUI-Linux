@@ -121,72 +121,74 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 	)
 
 	// Main execution handler
-	calcBtn := widget.NewButtonWithIcon("Calculate Checksums", theme.ConfirmIcon(), func() { // TODO: even checking a single checkbox causes all the checksum calculations. if this is likely to take significant time for larger files, then optimize.
+	calcBtn := widget.NewButtonWithIcon("Calculate Checksums", theme.ConfirmIcon(), func() {
 		dialog.ShowConfirm(
-			"Calculate checkums",
+			"Calculate checksums",
 			"Calculation time depends on file size. Real-time logging is displayed in the Status tab.\n\nProceed?",
 			func(confirmed bool) {
-				if confirmed {
-					filePath := fileEntry.Text
-					if filePath == "" {
-						dialog.ShowError(fmt.Errorf("please select a file first"), w)
-						return
-					}
-
-					// Ensure at least one checkbox is checked
-					anyChecked := false
-					for _, r := range rows {
-						if r.check.Checked {
-							anyChecked = true
-							break
-						}
-					}
-					if !anyChecked {
-						dialog.ShowError(fmt.Errorf("please select at least one checksum method"), w)
-						return
-					}
-
-					// Reset values and copy states before starting
-					for _, r := range rows {
-						r.entry.SetText("")
-						r.copyBtn.Disable()
-						if r.check.Checked {
-							r.entry.SetText("Calculating...")
-						}
-					}
-
-					// Invoke the 7-Zip CLI with -scrc* to process all hashes efficiently in a single pass.
-					// Only checked entries are populated when done.
-					args := []string{"h", "-scrc*", filePath}
-
-					// On successful execution, parse out results and navigate to the Checksum tab
-					onSuccess := func() {
-						hashes := parseHashesFromLog()
-
-						for _, r := range rows {
-							if r.check.Checked {
-								val, exists := hashes[strings.ToUpper(r.name)]
-								if exists {
-									r.entry.SetText(val)
-									r.copyBtn.Enable()
-								} else {
-									r.entry.SetText("Error: Hash missing from output")
-								}
-							} else {
-								r.entry.SetText("")
-							}
-						}
-
-						// Switch back to the Checksum tab (index 2) so the user can see the results
-						tabs.Select(ChecksumTabRank)
-					}
-
-					// Switch to the Status tab (index 3) so the user can see the calculation progress in real-time
-					tabs.Select(StatusTabRank)
-
-					// Run calculation asynchronously via operations.go wrapper
-					startOperation(args, "Checksums", w, onSuccess)
+				if !confirmed {
+					return
 				}
+
+				filePath := fileEntry.Text
+				if filePath == "" {
+					dialog.ShowError(fmt.Errorf("please select a file first"), w)
+					return
+				}
+
+				// Collect selected checksum methods and reset UI state
+				var selected []string
+				for _, r := range rows {
+					r.entry.SetText("")
+					r.copyBtn.Disable()
+					if r.check.Checked {
+						r.entry.SetText("Calculating...")
+						selected = append(selected, r.name)
+					}
+				}
+
+				// Ensure at least one checkbox is checked
+				if len(selected) == 0 {
+					dialog.ShowError(fmt.Errorf("please select at least one checksum method"), w)
+					return
+				}
+
+				// If exactly 1 method is selected, request only that algorithm to bypass calculating the rest.
+				// If multiple methods are selected, use "*" to calculate all hashes in a single I/O pass. This avoids sequential commands which would trigger multiple redundant disk-reads of large files.
+				scrcArg := "-scrc*"
+				if len(selected) == 1 {
+					scrcArg = "-scrc" + selected[0]
+				}
+
+				args := []string{"h", scrcArg, filePath}
+
+				// On successful execution, parse out results and navigate to the Checksum tab
+				onSuccess := func() {
+					hashes := parseHashesFromLog()
+
+					for _, r := range rows {
+						if r.check.Checked {
+							val, exists := hashes[strings.ToUpper(r.name)]
+							if exists {
+								r.entry.SetText(val)
+								r.copyBtn.Enable()
+							} else {
+								r.entry.SetText("Error: Hash missing from output")
+							}
+						} else {
+							r.entry.SetText("")
+						}
+					}
+
+					// Switch back to the Checksum tab so the user can see the results
+					tabs.Select(ChecksumTabRank)
+				}
+
+				// Switch to the Status tab so the user can see progress in real-time
+				tabs.Select(StatusTabRank)
+
+				// Run calculation asynchronously via operations.go wrapper
+				startOperation(args, "Checksums", w, onSuccess)
 			},
 			w,
 		)
