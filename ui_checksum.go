@@ -196,21 +196,20 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 	calcBtn.Importance = widget.HighImportance
 
 	return container.NewPadded(container.NewBorder(
-			container.NewVBox(
-				widget.NewRichTextFromMarkdown("## Checksums"),
-				widget.NewSeparator(),
-				container.NewBorder(nil, nil, nil, browseBtn, fileEntry),
-				widget.NewLabel(""),
-			),
-			container.NewVBox(
-				widget.NewLabel(""),
-				container.NewHBox(layout.NewSpacer(), calcBtn),
-			),
-			nil,
-			nil,
-			optionsGroup,
+		container.NewVBox(
+			widget.NewRichTextFromMarkdown("## Checksums"),
+			widget.NewSeparator(),
+			container.NewBorder(nil, nil, nil, browseBtn, fileEntry),
+			widget.NewLabel(""),
 		),
-	)
+		container.NewVBox(
+			widget.NewLabel(""),
+			container.NewHBox(layout.NewSpacer(), calcBtn),
+		),
+		nil,
+		nil,
+		optionsGroup,
+	))
 }
 
 // parseHashesFromLog scans log outputs and isolates algorithm results.
