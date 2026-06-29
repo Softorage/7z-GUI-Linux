@@ -217,14 +217,8 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 func parseHashesFromLog() map[string]string {
 	hashes := make(map[string]string)
 
-	logMu.Lock()
-	// Combine stable log lines and active current log line buffer
-	allLines := make([]string, len(logLines))
-	copy(allLines, logLines)
-	if len(currentLogLine) > 0 {
-		allLines = append(allLines, string(currentLogLine))
-	}
-	logMu.Unlock()
+	// Fetch unified log lines copy safely
+	allLines := getLogLines()
 
 	// Scan backward to pull target checksum markers specifically from the latest run
 	for i := len(allLines) - 1; i >= 0; i-- {

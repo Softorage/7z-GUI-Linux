@@ -2,6 +2,7 @@ package main
 
 import (
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -133,4 +134,22 @@ func processLogByte(b byte) {
 		}
 		logCursor++
 	}
+}
+
+// getLogLines returns a thread-safe copy of all completed log lines plus the active line.
+func getLogLines() []string {
+	logMu.Lock()
+	defer logMu.Unlock()
+
+	lines := make([]string, len(logLines), len(logLines)+1)
+	copy(lines, logLines)
+	if len(currentLogLine) > 0 {
+		lines = append(lines, string(currentLogLine))
+	}
+	return lines
+}
+
+// getFullLogText returns the assembled console logs thread-safely.
+func getFullLogText() string {
+	return strings.Join(getLogLines(), "\n")
 }

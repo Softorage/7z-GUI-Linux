@@ -44,11 +44,14 @@ func build7zArgs(src, customName string, format string, level string, method str
 	}
 	dest := filepath.Join(filepath.Dir(src), base+ext)
 
+	// Determine if the format supports multi-file archiving/updating features
+	updatableArchiveFormat := format != "tar" && format != "gzip" && format != "bzip2" && format != "xz"
+
 	// Determine command line action (a = Add, u = Update)
 	cmdAction := "a"
 	var updateSwitches []string
 
-	if format != "tar" && format != "gzip" && format != "bzip2" && format != "xz" {
+	if updatableArchiveFormat {
 		if update != "Add and replace files" {
 			cmdAction = "u"
 			if update == "Freshen existing files" {
@@ -134,7 +137,7 @@ func build7zArgs(src, customName string, format string, level string, method str
 	args = append(args, "-mmt="+threads)
 
 	// Map Split (Not supported by tar/gzip/bzip2/xz)
-	if split != "" && format != "tar" && format != "gzip" && format != "bzip2" && format != "xz" {
+	if split != "" && updatableArchiveFormat {
 		args = append(args, "-v"+split)
 	}
 
@@ -198,7 +201,7 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 	logLines = append(logLines, "========================================", commandStr)
 	currentLogLine = currentLogLine[:0]
 	logMu.Unlock()
-	consoleLog.SetText(strings.Join(logLines, "\n"))
+	consoleLog.SetText(getFullLogText())
 
 	// Lock UI functionality safely
 	stateMu.Lock()
@@ -257,13 +260,7 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 			stateMu.RUnlock()
 
 			// Update the UI Log
-			logMu.Lock()
-			fullLog := strings.Join(logLines, "\n")
-			if len(currentLogLine) > 0 {
-				fullLog += "\n" + string(currentLogLine)
-			}
-			logMu.Unlock()
-			consoleLog.SetText(fullLog)
+			consoleLog.SetText(getFullLogText())
 
 			if !running {
 				return
@@ -316,15 +313,9 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 		err = currentCmd.Wait()
 
 		// Final Log UI Update (catches the very last fragments)
-		logMu.Lock()
-		fullLog := strings.Join(logLines, "\n")
-		if len(currentLogLine) > 0 {
-			fullLog += "\n" + string(currentLogLine)
-		}
-		logMu.Unlock()
-		consoleLog.SetText(fullLog)
+		consoleLog.SetText(getFullLogText())
 
-		// Update History Status
+		// Update History Status and reset operation states in a single atomic lock
 		stateMu.Lock()
 		isOperationRunning = false
 		currentCmd = nil
@@ -340,12 +331,6 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 		historyData[entryIndex].Status = finalStatus
 		stateMu.Unlock()
 		historyList.Refresh()
-
-		// Unlock the UI
-		stateMu.Lock()
-		isOperationRunning = false
-		currentCmd = nil
-		stateMu.Unlock()
 
 		pauseBtn.Disable()
 		cancelBtn.Disable()
