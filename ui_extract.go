@@ -53,15 +53,16 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
 			)
 			if err == nil && file != "" {
-				srcEntry.SetText(file)
+				fyne.Do(func() {
+					srcEntry.SetText(file)
 
-				// Determine destination path automatically
-				destPath := filepath.Dir(file)
-				if createSubfolderCheck.Checked {
-					baseName := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
-					destPath = filepath.Join(destPath, baseName)
-				}
-				destEntry.SetText(destPath)
+					destPath := filepath.Dir(file)
+					if createSubfolderCheck.Checked {
+						baseName := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+						destPath = filepath.Join(destPath, baseName)
+					}
+					destEntry.SetText(destPath)
+				})
 			}
 		}()
 	})
@@ -91,7 +92,9 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 			folder, err := zenity.SelectFile(opts...)
 
 			if err == nil && folder != "" {
-				destEntry.SetText(folder)
+				fyne.Do(func() {
+					destEntry.SetText(folder)
+				})
 			}
 		}()
 	})
@@ -114,9 +117,9 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 		dest := destEntry.Text
 		autoOpenBool := autoOpenCheck.Checked
 
-		// Run check asynchronously to avoid blocking the Fyne UI loop
+		// Keep the blocking process-check inside the background goroutine
 		go func() {
-			setInfo("Checking archive...")
+			setInfo("Checking archive...") // setInfo uses its own internal fyne.Do
 
 			var onSuccess func()
 			if autoOpenBool {
@@ -126,34 +129,39 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 				}
 			}
 
-			if isPasswordProtected(src) {
-				pwdEntry := widget.NewPasswordEntry()
-				pwdEntry.PlaceHolder = "Enter Password"
+			// Synchronous disk/process reading remains safely in background
+			isProtected := isPasswordProtected(src)
 
-				items := []*widget.FormItem{
-					widget.NewFormItem("Password:", pwdEntry),
-				}
+			fyne.Do(func() {
+				if isProtected {
+					pwdEntry := widget.NewPasswordEntry()
+					pwdEntry.PlaceHolder = "Enter Password"
 
-				d := dialog.NewForm("Password Required", "Extract", "Cancel", items, func(submit bool) {
-					if submit {
-						// Append the -p switch with the user's password
-						// Note: os/exec handles spaces safely automatically, no manual shell-escaping needed
-						args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwdEntry.Text}
-						tabs.Select(StatusTabRank)
-						startOperation(args, "Extracting", w, onSuccess)
-					} else {
-						setInfo("Extraction cancelled.")
+					items := []*widget.FormItem{
+						widget.NewFormItem("Password:", pwdEntry),
 					}
-				}, w)
-				windowSize := w.Canvas().Size()
-				d.Resize(fyne.NewSize(windowSize.Width*0.8, d.MinSize().Height))
-				d.Show()
-			} else {
-				// Proceed normally if no password is required
-				args := []string{"x", src, "-o" + dest, "-bsp1", "-y"}
-				tabs.Select(StatusTabRank)
-				startOperation(args, "Extracting", w, onSuccess)
-			}
+
+					d := dialog.NewForm("Password Required", "Extract", "Cancel", items, func(submit bool) {
+						if submit {
+							// Append the -p switch with the user's password
+							// Note: os/exec handles spaces safely automatically, no manual shell-escaping needed
+							args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwdEntry.Text}
+							tabs.Select(StatusTabRank)
+							startOperation(args, "Extracting", w, onSuccess)
+						} else {
+							setInfo("Extraction cancelled.")
+						}
+					}, w)
+					windowSize := w.Canvas().Size()
+					d.Resize(fyne.NewSize(windowSize.Width*0.8, d.MinSize().Height))
+					d.Show()
+				} else {
+					// Proceed normally if no password is required
+					args := []string{"x", src, "-o" + dest, "-bsp1", "-y"}
+					tabs.Select(StatusTabRank)
+					startOperation(args, "Extracting", w, onSuccess)
+				}
+			})
 		}()
 	})
 	extractBtn.Importance = widget.HighImportance

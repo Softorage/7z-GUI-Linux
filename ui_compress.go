@@ -17,6 +17,8 @@ import (
 	"github.com/ncruces/zenity"
 )
 
+// Any UI manipulation (like .SetText(), .SetValue(), .Refresh()) that is triggered inside a background goroutine (go func()) or a background timer (time.AfterFunc) must be wrapped in fyne.Do
+
 func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	// Browse Folder or File
 	srcEntry := widget.NewEntry()
@@ -30,10 +32,11 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
 			)
 			if err == nil && file != "" {
-				srcEntry.SetText(file)
+				fyne.Do(func() {
+					srcEntry.SetText(file)
+				})
 			}
 		}()
-
 	})
 
 	browseFolderBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
@@ -45,7 +48,9 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
 			)
 			if err == nil && folder != "" {
-				srcEntry.SetText(folder)
+				fyne.Do(func() {
+					srcEntry.SetText(folder)
+				})
 			}
 		}()
 	})

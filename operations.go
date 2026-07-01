@@ -13,6 +13,27 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
+// updateConsoleLog updates the log text and positions the entry cursor at the very row, forcing Fyne's native scroll viewport to go to the bottom.
+func updateConsoleLog(text string) {
+	logTextMu.Lock()
+	if text == lastLogText {
+		logTextMu.Unlock()
+		return
+	}
+	lastLogText = text
+	logTextMu.Unlock()
+
+	// Safely queue UI update on Fyne's main event thread
+	fyne.Do(func() {
+		consoleLog.SetText(text)
+		lines := strings.Split(text, "\n")
+		if len(lines) > 0 {
+			consoleLog.CursorRow = len(lines) - 1
+		}
+		consoleLog.Refresh()
+	})
+}
+
 func build7zArgs(src, customName string, format string, level string, method string, dictSize string, wordSize, blockSize string, threads, update string, sfx bool, shared bool, split string, enc bool, pass string, encName bool) []string {
 
 	// Standardize extensions for common formats mapped by 7-Zip
@@ -165,6 +186,12 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 	}
 
 	stateMu.Lock()
+	// Prevent launching a new operation if one is already running
+	if isOperationRunning {
+		stateMu.Unlock()
+		return 
+	}
+
 	logEntry := operationLog{
 		ID:        len(historyData),
 		File:      fileName,
@@ -175,20 +202,25 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 	historyData = append([]operationLog{logEntry}, historyData...) // Prepend to show newest first
 	entryIndex := 0                                                // Since we prepend, it's always at the top
 	stateMu.Unlock()
-	historyList.Refresh()
-
+	fyne.Do(func() {
+		historyList.Refresh()
+	})
 	currentCmd = exec.Command(root7zCmd, args...)
 
 	stdout, err := currentCmd.StdoutPipe()
 	if err != nil {
-		setFinalStatus(fmt.Sprintf("Error connecting to output: %v", err))
+		fyne.Do(func() {
+			setFinalStatus(fmt.Sprintf("Error connecting to output: %v", err))
+		})
 		return
 	}
 
 	// Capture stderr for potential errors
 	stderr, err := currentCmd.StderrPipe()
 	if err != nil {
-		setFinalStatus(fmt.Sprintf("Error connecting to stderr: %v", err))
+		fyne.Do(func() {
+			setFinalStatus(fmt.Sprintf("Error connecting to stderr: %v", err))
+		})
 		return
 	}
 
@@ -201,7 +233,7 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 	logLines = append(logLines, "========================================", commandStr)
 	currentLogLine = currentLogLine[:0]
 	logMu.Unlock()
-	consoleLog.SetText(getFullLogText())
+	updateConsoleLog(getFullLogText())
 
 	// Lock UI functionality safely
 	stateMu.Lock()
@@ -210,15 +242,15 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 	currentPercent = 0
 	stateMu.Unlock()
 
-	progressBar.SetValue(0)
-
-	// Set buttons active
-	pauseBtn.SetText("Pause")
-	pauseBtn.SetIcon(theme.MediaPauseIcon())
-	pauseBtn.Enable()
-	cancelBtn.Enable()
-
-	setInfo(fmt.Sprintf("%s started...", mode))
+	fyne.Do(func() {
+		progressBar.SetValue(0.0)
+		// Set buttons active
+		pauseBtn.SetText("Pause")
+		pauseBtn.SetIcon(theme.MediaPauseIcon())
+		pauseBtn.Enable()
+		cancelBtn.Enable()
+		setInfo(fmt.Sprintf("%s started...", mode))
+	})
 	startTime := time.Now()
 
 	err = currentCmd.Start()
@@ -227,14 +259,16 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 		isOperationRunning = false
 		currentCmd = nil
 		stateMu.Unlock()
-
-		pauseBtn.Disable()
-		cancelBtn.Disable()
-		setFinalStatus(fmt.Sprintf("Failed to start 7-Zip: %v", err))
+		fyne.Do(func() {
+			pauseBtn.Disable()
+			cancelBtn.Disable()
+			setFinalStatus(fmt.Sprintf("Failed to start 7-Zip: %v", err))
+		})
 		return
 	}
 
 	ticker := time.NewTicker(1 * time.Second)
+	doneChan := make(chan struct{}) // Used to cleanly teardown UI routine
 
 	// Stderr Reader Routine
 	go func() {
@@ -252,58 +286,68 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 
 	// UI Update Routine (Once per second)
 	go func() {
-		for range ticker.C {
-			stateMu.RLock()
-			running := isOperationRunning
-			paused := isPaused
-			pct := currentPercent
-			stateMu.RUnlock()
+		re := regexp.MustCompile(`(\d+)%`)
+		for {
+			select {
+			case <-ticker.C:
+				stateMu.RLock()
+				running := isOperationRunning
+				paused := isPaused
+				stateMu.RUnlock()
 
-			// Update the UI Log
-			consoleLog.SetText(getFullLogText())
+				// Update the UI Log
+				updateConsoleLog(getFullLogText())
 
-			if !running {
+				if !running {
+					return
+				}
+				if paused {
+					continue
+				}
+
+				// Safely read the current log line to extract the latest percentage marker
+				logMu.Lock()
+				activeLine := string(currentLogLine)
+				logMu.Unlock()
+
+				// Parse progress dynamically on the 1-second interval
+				matches := re.FindStringSubmatch(activeLine)
+				if len(matches) > 1 {
+					val, _ := strconv.ParseFloat(matches[1], 64)
+					stateMu.Lock()
+					currentPercent = val
+					stateMu.Unlock()
+				}
+
+				stateMu.RLock()
+				pct := currentPercent
+				stateMu.RUnlock()
+
+				// Refresh Fyne widgets
+				fyne.Do(func() {
+					progressBar.SetValue(pct / 100.0)
+					elapsed := time.Since(startTime).Round(time.Second)
+					statusLog.SetText(fmt.Sprintf("Status: Running\nElapsed Time: %s\n", elapsed))
+				})
+			case <-doneChan:
+				// Ensure final state is drawn before routine exits
+				updateConsoleLog(getFullLogText())
 				return
 			}
-			if paused {
-				continue
-			}
-
-			// Refresh Fyne widgets
-			progressBar.SetValue(pct / 100.0)
-			elapsed := time.Since(startTime).Round(time.Second)
-			statusLog.SetText(fmt.Sprintf("Status: Running\nElapsed Time: %s\nProgress: %.0f%%", elapsed, pct))
 		}
 	}()
 
-	// Sub-process I/O Reader Routine (Parses stdout byte-by-byte for exact progress)
+	// Sub-process I/O Reader Routine (Populates log bytes only; decoupled from math operations)
 	go func() {
 		defer ticker.Stop()
-		re := regexp.MustCompile(`(\d+)%`)
+		defer close(doneChan) // Terminate UI update ticker routine safely
 		buf := make([]byte, 1)
 
 		// 7-zip relies heavily on \b (backspaces) and \r to rewrite lines visually.
 		for {
 			n, readErr := stdout.Read(buf)
 			if n > 0 {
-				b := buf[0]
-				// Stream byte to our terminal parser
-				processLogByte(b)
-
-				if b == '\r' || b == '\n' || b == '\b' {
-					// Safely read the line parsed by processLogByte
-					logMu.Lock()
-					str := string(currentLogLine)
-					logMu.Unlock()
-
-					matches := re.FindStringSubmatch(str)
-					if len(matches) > 1 {
-						val, _ := strconv.ParseFloat(matches[1], 64)
-						stateMu.Lock()
-						currentPercent = val
-						stateMu.Unlock()
-					}
-				}
+				processLogByte(buf[0])
 			}
 			if readErr != nil {
 				break
@@ -313,7 +357,7 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 		err = currentCmd.Wait()
 
 		// Final Log UI Update (catches the very last fragments)
-		consoleLog.SetText(getFullLogText())
+		updateConsoleLog(getFullLogText())
 
 		// Update History Status and reset operation states in a single atomic lock
 		stateMu.Lock()
@@ -328,30 +372,36 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 				finalStatus = "Error"
 			}
 		}
-		historyData[entryIndex].Status = finalStatus
-		stateMu.Unlock()
-		historyList.Refresh()
-
-		pauseBtn.Disable()
-		cancelBtn.Disable()
-
-		if err != nil {
-			if err.Error() == "signal: killed" {
-				setFinalStatus("Operation was cancelled by user.")
-				setInfo("Cancelled.")
-			} else {
-				setFinalStatus(fmt.Sprintf("Finished with errors: %v", err))
-				setInfo("Error during operation.")
-			}
-		} else {
-			progressBar.SetValue(1.0)
-			setFinalStatus("Operation completed successfully!")
-			setInfo("Done.")
-
-			// Execute the onSuccess callback upon completion, if requested
-			if onSuccess != nil {
-				onSuccess()
-			}
+		if len(historyData) > entryIndex {
+			historyData[entryIndex].Status = finalStatus
 		}
+		stateMu.Unlock()
+
+		fyne.Do(func() {
+			historyList.Refresh()
+
+			pauseBtn.Disable()
+			cancelBtn.Disable()
+
+			if err != nil {
+				progressBar.SetValue(0.0)
+				if err.Error() == "signal: killed" {
+					setFinalStatus("Operation was cancelled by user.")
+					setInfo("Cancelled.")
+				} else {
+					setFinalStatus(fmt.Sprintf("Finished with errors: %v", err))
+					setInfo("Error during operation.")
+				}
+			} else {
+				progressBar.SetValue(1.0)
+				setFinalStatus("Operation completed successfully!")
+				setInfo("Done.")
+
+				// Execute the onSuccess callback upon completion, if requested
+				if onSuccess != nil {
+					onSuccess()
+				}
+			}
+		})
 	}()
 }

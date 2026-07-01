@@ -13,7 +13,12 @@ import (
 func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	statusLog = widget.NewLabel("No operations running.")
 	statusLog.Wrapping = fyne.TextWrapWord
+
+	// Initialize Progress Bar
 	progressBar = widget.NewProgressBar()
+	progressBar.Min = 0.0
+	progressBar.Max = 1.0
+	progressBar.SetValue(0.0)
 
 	// Initialize the History List
 	historyList = widget.NewList(
@@ -106,18 +111,6 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 
 	consoleLog.PlaceHolder = "7GL Console Initialized\n--------------------------------------------\n> Waiting for process output..."
 
-	// Auto-scroll to the bottom whenever text updates.
-	// Hooking into OnChanged assures that it will execute cleanly after SetText() resets it.
-	consoleLog.OnChanged = func(s string) {
-		lineCount := 0
-		for _, c := range s {
-			if c == '\n' {
-				lineCount++
-			}
-		}
-		consoleLog.CursorRow = lineCount
-	}
-
 	logSection := container.NewPadded(consoleLog)
 
 	bottomTabs := container.NewPadded(container.NewAppTabs(
@@ -126,8 +119,8 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	))
 
 	// Use Split so user can resize the status vs tab area
-	split := container.NewVSplit(currentStatus, bottomTabs)
-	split.Offset = 0.3 // Give current status 30% of space initially
+	//split := container.NewVSplit(currentStatus, bottomTabs)
+	//split.Offset = 0.3 // Give current status 30% of space initially
 
 	// Use Border layout to ensure the 'split' container expands to fill the window
 	return container.NewPadded(
@@ -135,11 +128,12 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 			container.NewVBox(
 				widget.NewRichTextFromMarkdown("## Status"),
 				widget.NewSeparator(),
+				currentStatus,
 			),
 			nil,
 			nil,
 			nil,
-			split,
+			bottomTabs,
 		),
 	)
 }

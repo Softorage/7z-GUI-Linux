@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"fyne.io/fyne/v2" // Imported to access fyne.Do
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -29,7 +30,7 @@ var (
 	isPaused           bool
 	isOperationRunning bool
 	currentPercent     float64
-	stateMu            sync.RWMutex // Protects state across goroutines to prevent data races
+	stateMu            sync.RWMutex
 
 	// Timers and mutexes to auto-clear UI text after 6 seconds
 	infoBarTimer *time.Timer
@@ -46,8 +47,10 @@ var (
 	logMu          sync.Mutex
 	logLines       []string
 	currentLogLine []byte
-	logCursor      int // Emulates a terminal cursor position to prevent flickering
+	logCursor      int
 	consoleLog     *widget.Entry
+	lastLogText    string
+	logTextMu      sync.Mutex
 )
 
 var root7zCmd string = "7z"
@@ -64,7 +67,10 @@ const (
 func setInfo(text string) {
 	infoMu.Lock()
 	defer infoMu.Unlock()
-	infoBar.SetText(text)
+
+	fyne.Do(func() {
+		infoBar.SetText(text)
+	})
 
 	if infoBarTimer != nil {
 		infoBarTimer.Stop()
@@ -75,15 +81,17 @@ func setInfo(text string) {
 		paused := isPaused
 		stateMu.RUnlock()
 
-		if running {
-			if paused {
-				infoBar.SetText("Operation paused.")
+		fyne.Do(func() {
+			if running {
+				if paused {
+					infoBar.SetText("Operation paused.")
+				} else {
+					infoBar.SetText("Operation in progress...")
+				}
 			} else {
-				infoBar.SetText("Operation in progress...")
+				infoBar.SetText("Ready. Interact with an option to see its description.")
 			}
-		} else {
-			infoBar.SetText("Ready. Interact with an option to see its description.")
-		}
+		})
 	})
 }
 
@@ -91,7 +99,10 @@ func setInfo(text string) {
 func setFinalStatus(text string) {
 	statusMu.Lock()
 	defer statusMu.Unlock()
-	statusLog.SetText(text)
+
+	fyne.Do(func() {
+		statusLog.SetText(text)
+	})
 
 	if statusTimer != nil {
 		statusTimer.Stop()
@@ -101,8 +112,10 @@ func setFinalStatus(text string) {
 		running := isOperationRunning
 		stateMu.RUnlock()
 		if !running {
-			statusLog.SetText("No operations running.")
-			progressBar.SetValue(0)
+			fyne.Do(func() {
+				statusLog.SetText("No operations running.")
+				progressBar.SetValue(0)
+			})
 		}
 	})
 }

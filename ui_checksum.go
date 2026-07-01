@@ -50,7 +50,9 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 				zenity.Title("Select File for Checksum"),
 			)
 			if err == nil && file != "" {
-				fileEntry.SetText(file)
+				fyne.Do(func() {
+					fileEntry.SetText(file)
+				})
 			}
 		}()
 	})
