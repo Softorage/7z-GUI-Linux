@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"fyne.io/fyne/v2" // Imported to access fyne.Do
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 )
 

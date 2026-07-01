@@ -119,7 +119,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 
 		// Keep the blocking process-check inside the background goroutine
 		go func() {
-			setInfo("Checking archive...") // setInfo uses its own internal fyne.Do
+			setInfo("Checking archive...")
 
 			var onSuccess func()
 			if autoOpenBool {

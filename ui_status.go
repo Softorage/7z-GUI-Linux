@@ -118,10 +118,6 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 		container.NewTabItem("Log", logSection),
 	))
 
-	// Use Split so user can resize the status vs tab area
-	//split := container.NewVSplit(currentStatus, bottomTabs)
-	//split.Offset = 0.3 // Give current status 30% of space initially
-
 	// Use Border layout to ensure the 'split' container expands to fill the window
 	return container.NewPadded(
 		container.NewBorder(
