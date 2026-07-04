@@ -14,7 +14,9 @@ Please leave a star if you find it useful!
 
 ---
 
-**Note by dev:** The tool is tested by me for my personal use and works pretty nice. But it's still very early in development. If you find any issues, please let me know via [GitHub Issues](https://github.com/Softorage/7z-GUI-Linux/issues).
+**Note by dev:**
+- The tool is tested by me for my personal use and works pretty nice. But it's still very early in development. If you find any issues, please let me know via [GitHub Issues](https://github.com/Softorage/7z-GUI-Linux/issues).
+- Although I am releasing the tool under Softorage (which receives fewer [visits](https://softorage.com/blog/2026/02/softorage-by-the-numbers/) than you might think), it's still me working in my free time. Thank you for understanding.
 
 ## Table of Contents
 

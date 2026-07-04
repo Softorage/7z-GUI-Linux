@@ -19,43 +19,13 @@ import (
 
 // Any UI manipulation (like .SetText(), .SetValue(), .Refresh()) that is triggered inside a background goroutine (go func()) or a background timer (time.AfterFunc) must be wrapped in fyne.Do
 
+var compressSrcEntry *widget.Entry
+
 func buildCompressTab(w fyne.Window) fyne.CanvasObject {
-	// Browse Folder or File
-	srcEntry := widget.NewEntry()
-	srcEntry.PlaceHolder = "Select a file or folder to compress..."
+	var selectedSources []string
 
-	browseFileBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
-		go func() {
-			file, err := zenity.SelectFile(
-				zenity.Title("Select File"),
-				// Decide: We can filter extensions like this
-				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
-			)
-			if err == nil && file != "" {
-				fyne.Do(func() {
-					srcEntry.SetText(file)
-				})
-			}
-		}()
-	})
-
-	browseFolderBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
-		go func() {
-			folder, err := zenity.SelectFile(
-				zenity.Title("Select Folder"),
-				zenity.Directory(),
-				// Decide: We can filter extensions like this
-				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
-			)
-			if err == nil && folder != "" {
-				fyne.Do(func() {
-					srcEntry.SetText(folder)
-				})
-			}
-		}()
-	})
-
-	browseBtns := container.NewHBox(browseFileBtn, browseFolderBtn)
+	// Backward compatibility global entry (hidden listener)
+	compressSrcEntry = widget.NewEntry()
 
 	// Custom Archive Name Checkbox and Entry
 	customNameEntry := widget.NewEntry()
@@ -63,34 +33,273 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	customNameEntry.Disable()
 
 	customNameCheck := widget.NewCheck("Custom Name", nil)
+
+	// Format Select
+	formatSelect := widget.NewSelect([]string{"7z", "xz", "bzip2", "gzip", "tar", "zip", "wim"}, nil)
+	formatSelect.SetSelected("7z")
+
+	// SFX Checkbox
+	sfxCheck := widget.NewCheck("Create SFX archive", nil)
+
+	// Output Path Preview Label
+	archivePreviewLabel := widget.NewLabel("No source files selected")
+	archivePreviewLabel.Wrapping = fyne.TextWrapWord
+
+	// Central helper to update output preview text
+	updateArchivePreview := func() {
+		if len(selectedSources) == 0 {
+			archivePreviewLabel.SetText("No source files selected")
+			return
+		}
+
+		format := formatSelect.Selected
+		sfx := sfxCheck.Checked
+		customChecked := customNameCheck.Checked
+		customText := strings.TrimSpace(customNameEntry.Text)
+
+		customName := ""
+
+		if customChecked && customText != "" {
+			customName = customText
+		}
+
+		// Retrieve consolidated target destination from shared package-level helper
+		destPath := getArchiveDestination(selectedSources, format, customName, sfx)
+		archivePreviewLabel.SetText(destPath)
+
+	}
+
+	// Declare list variable beforehand so its functions can reference it
+	var sourceList *widget.List
+
+	// Instantiate the standardized, performant list widget
+	sourceList = widget.NewList(
+		func() int {
+			return len(selectedSources)
+		},
+		func() fyne.CanvasObject {
+			icon := widget.NewIcon(theme.FileIcon())
+			lbl := widget.NewLabel("Template path placeholder")
+			lbl.TextStyle = fyne.TextStyle{Bold: false}
+
+			deleteBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), nil)
+			deleteBtn.Importance = widget.LowImportance
+
+			// Layout keeps details visually segmented and pins delete buttons to the right
+			return container.NewBorder(nil, nil, icon, deleteBtn, lbl)
+		},
+		func(id widget.ListItemID, o fyne.CanvasObject) {
+			if id >= len(selectedSources) {
+				return
+			}
+			path := selectedSources[id]
+
+			borderContainer := o.(*fyne.Container)
+
+			// Robust Type Assertion Scan: Matches elements correctly across current/future Fyne layout engines
+			var iconWidget *widget.Icon
+			var labelWidget *widget.Label
+			var btnWidget *widget.Button
+
+			for _, obj := range borderContainer.Objects {
+				switch typed := obj.(type) {
+				case *widget.Icon:
+					iconWidget = typed
+				case *widget.Label:
+					labelWidget = typed
+				case *widget.Button:
+					btnWidget = typed
+				}
+			}
+
+			if iconWidget == nil || labelWidget == nil || btnWidget == nil {
+				return
+			}
+
+			// Format text with display truncation
+			displayPath := path
+			if len(displayPath) > 55 {
+				displayPath = "..." + displayPath[len(displayPath)-52:]
+			}
+			labelWidget.SetText(displayPath)
+
+			// Detect directories vs files to select matching system theme icons [1]
+			isDir := false
+			if fInfo, err := os.Stat(path); err == nil {
+				isDir = fInfo.IsDir()
+			}
+			iconResource := theme.FileIcon()
+			if isDir {
+				iconResource = theme.FolderIcon()
+			}
+			iconWidget.SetResource(iconResource)
+
+			// Individual row item removal handler
+			btnWidget.OnTapped = func() {
+				for i, s := range selectedSources {
+					if s == path {
+						selectedSources = append(selectedSources[:i], selectedSources[i+1:]...)
+						break
+					}
+				}
+				sourceList.Refresh()
+				// We call the state updates on main thread to trigger views
+				fyne.Do(func() {
+					if len(selectedSources) == 0 {
+						sourceList.Hide()
+					}
+					updateArchivePreview()
+				})
+			}
+		},
+	)
+
+	// Clean Selection override: prevents selection highlight styles from sticking on clicked items
+	sourceList.OnSelected = func(id widget.ListItemID) {
+		sourceList.Unselect(id)
+	}
+
+	// Empty State Placeholder
+	placeholder := widget.NewLabel("No files or folders selected. Use the buttons on the right to add elements.")
+	placeholder.Alignment = fyne.TextAlignCenter
+
+	// Stack lists and placeholders cleanly together
+	listStack := container.NewStack(sourceList, placeholder)
+
+	// Main list updating coordinator
+	refreshSourceList := func() {
+		if len(selectedSources) == 0 {
+			sourceList.Hide()
+			placeholder.Show()
+		} else {
+			sourceList.Show()
+			placeholder.Hide()
+			sourceList.Refresh()
+		}
+		listStack.Refresh()
+		updateArchivePreview()
+	}
+
+	// Intercept and parse incoming values directed into standard compressSrcEntry strings
+	compressSrcEntry.OnChanged = func(val string) {
+		if val == "" {
+			return
+		}
+		paths := strings.Split(val, "\n")
+		hasChanges := false
+		for _, p := range paths {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				exists := false
+				for _, s := range selectedSources {
+					if s == p {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					selectedSources = append(selectedSources, p)
+					hasChanges = true
+				}
+			}
+		}
+		if hasChanges {
+			compressSrcEntry.SetText("") // Clear listening value safely to prevent recurrences
+			refreshSourceList()
+		}
+	}
+
+	// Action buttons
+	browseFileBtn := widget.NewButtonWithIcon("Add Files", theme.FileIcon(), func() {
+		go func() {
+			files, err := zenity.SelectFileMultiple(
+				zenity.Title("Select Files"),
+				// Decide: We can filter extensions like this
+				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
+			)
+			if err == nil && len(files) > 0 {
+				fyne.Do(func() {
+					for _, f := range files {
+						exists := false
+						for _, s := range selectedSources {
+							if s == f {
+								exists = true
+								break
+							}
+						}
+						if !exists {
+							selectedSources = append(selectedSources, f)
+						}
+					}
+					refreshSourceList()
+				})
+			}
+		}()
+	})
+
+	browseFolderBtn := widget.NewButtonWithIcon("Add Folder", theme.FolderIcon(), func() {
+		go func() {
+			folders, err := zenity.SelectFileMultiple(
+				zenity.Title("Select Folders"),
+				zenity.Directory(),
+			)
+			if err == nil && len(folders) > 0 {
+				fyne.Do(func() {
+					for _, f := range folders {
+						exists := false
+						for _, s := range selectedSources {
+							if s == f {
+								exists = true
+								break
+							}
+						}
+						if !exists {
+							selectedSources = append(selectedSources, f)
+						}
+					}
+					refreshSourceList()
+				})
+			}
+		}()
+	})
+
+	clearBtn := widget.NewButtonWithIcon("Clear All", theme.ContentClearIcon(), func() {
+		selectedSources = nil
+		refreshSourceList()
+	})
+	clearBtn.Importance = widget.LowImportance
+
+	browseBtns := container.NewVBox(browseFileBtn, browseFolderBtn, clearBtn)
+
+	// Combine components into modern outer forms
+	srcContainer := container.NewBorder(nil, nil, nil, browseBtns, listStack)
+
 	customNameCheck.OnChanged = func(checked bool) {
 		if checked {
 			customNameEntry.Enable()
-			setInfo("Specify a custom name for the resulting archive.")
+			setInfo("Specify a custom name for the resulting archive, without extension.")
 		} else {
-			customNameEntry.SetText("")
 			customNameEntry.Disable()
 			setInfo("Using default archive name.")
 		}
+		updateArchivePreview()
+	}
+
+	customNameEntry.OnChanged = func(_ string) {
+		updateArchivePreview()
 	}
 
 	// Group the Custom Name Checkbox and text entry on a single line
 	customNameContainer := container.NewBorder(nil, nil, customNameCheck, nil, customNameEntry)
 
-	// Declare the widgets, set default state, and the info to display on change
-	// Format
-	formatSelect := widget.NewSelect([]string{"7z", "xz", "bzip2", "gzip", "tar", "zip", "wim"}, nil)
-	formatSelect.SetSelected("7z")
-	formatSelect.OnChanged = func(_ string) { setInfo("Archive format: Determines the container and algorithms.") }
-
-	// Level
+	// Level Select
 	levelSelect := widget.NewSelect([]string{"Store", "Fastest", "Fast", "Normal", "Maximum", "Ultra"}, nil)
 	levelSelect.SetSelected("Normal")
 	levelSelect.OnChanged = func(_ string) {
 		setInfo("Compression Level: Higher levels offer better compression but use more memory.")
 	}
 
-	// Compression Method
+	// Compression Method Select
 	methodSelect := widget.NewSelect([]string{"LZMA2", "LZMA", "PPMd", "BZip2", "Deflate", "Copy"}, nil)
 	methodSelect.SetSelected("LZMA2")
 	methodSelect.OnChanged = func(_ string) {
@@ -148,9 +357,10 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		}
 	}
 
-	// SFX
-	sfxCheck := widget.NewCheck("Create SFX archive", nil)
-	sfxCheck.OnChanged = func(_ bool) { setInfo("SFX: Creates a self-extracting executable in .exe format.") }
+	sfxCheck.OnChanged = func(_ bool) {
+		setInfo("SFX: Creates a self-extracting executable in .exe format.")
+		updateArchivePreview()
+	}
 
 	sharedCheck := widget.NewCheck("Compress shared files", nil)
 	sharedCheck.OnChanged = func(_ bool) {
@@ -304,9 +514,11 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			encCheck.Disable()
 			encCheck.SetChecked(false)
 		}
+
+		updateArchivePreview()
 	}
 
-	// Buttons
+	// Execution Actions
 	archiveBtn := widget.NewButtonWithIcon("Archive", theme.ConfirmIcon(), func() {
 		stateMu.RLock()
 		running := isOperationRunning
@@ -316,8 +528,8 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			return
 		}
 
-		if srcEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("please select a source file/folder"), w)
+		if len(selectedSources) == 0 {
+			dialog.ShowError(fmt.Errorf("please select source files/folders"), w)
 			return
 		}
 
@@ -328,9 +540,14 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		}
 
 		// Catch folder selection on single-stream formats
-		fInfo, err := os.Stat(srcEntry.Text)
-		if err == nil && fInfo.IsDir() {
-			if formatSelect.Selected == "gzip" || formatSelect.Selected == "bzip2" || formatSelect.Selected == "xz" {
+		isSingleStream := formatSelect.Selected == "gzip" || formatSelect.Selected == "bzip2" || formatSelect.Selected == "xz"
+		if isSingleStream {
+			if len(selectedSources) > 1 {
+				dialog.ShowError(fmt.Errorf("%s can only compress a single file. Please choose '7z' or 'zip' for multi-file operations", formatSelect.Selected), w)
+				return
+			}
+			fInfo, err := os.Stat(selectedSources[0])
+			if err == nil && fInfo.IsDir() {
 				dialog.ShowError(fmt.Errorf("%s cannot compress directories directly. Please use 'tar' first or choose '7z'/'zip'", formatSelect.Selected), w)
 				return
 			}
@@ -349,7 +566,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 		// Map options to 7z CLI
 		args := build7zArgs(
-			srcEntry.Text,
+			selectedSources,
 			customName,
 			formatSelect.Selected,
 			levelSelect.Selected,
@@ -374,10 +591,14 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	})
 	archiveBtn.Importance = widget.HighImportance
 
-	// Form Layout
+	// Initialize the Empty list or view state
+	refreshSourceList()
+
+	// Form Construction
 	form := widget.NewForm(
-		widget.NewFormItem("Source:", container.NewBorder(nil, nil, nil, browseBtns, srcEntry)),
+		widget.NewFormItem("Source:", srcContainer),
 		widget.NewFormItem("", customNameContainer),
+		widget.NewFormItem("Output:", archivePreviewLabel),
 		widget.NewFormItem("Archive format:", formatSelect),
 		widget.NewFormItem("Compression level:", levelSelect),
 		widget.NewFormItem("Compression method:", methodSelect),
@@ -407,7 +628,10 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			widget.NewSeparator(),
 			container.NewHBox(
 				layout.NewSpacer(),
-				widget.NewButton("Cancel", func() { srcEntry.SetText("") }),
+				widget.NewButton("Cancel", func() {
+					selectedSources = nil
+					refreshSourceList()
+				}),
 				archiveBtn,
 			),
 		),

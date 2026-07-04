@@ -35,9 +35,13 @@ func updateConsoleLog(text string) {
 	})
 }
 
-func build7zArgs(src, customName string, format string, level string, method string, dictSize string, wordSize, blockSize string, threads, update string, sfx bool, shared bool, split string, enc bool, pass string, encName bool) []string {
+// getArchiveDestination calculates the full target path for the archive.
+// Used in ui_compress and the build7zArgs arguments.
+func getArchiveDestination(sources []string, format string, customName string, sfx bool) string {
+	if len(sources) == 0 {
+		return ""
+	}
 
-	// Standardize extensions for common formats mapped by 7-Zip
 	extMap := map[string]string{
 		"7z":    ".7z",
 		"xz":    ".xz",
@@ -46,13 +50,6 @@ func build7zArgs(src, customName string, format string, level string, method str
 		"tar":   ".tar",
 		"zip":   ".zip",
 		"wim":   ".wim",
-	}
-
-	var base string
-	if customName != "" {
-		base = customName
-	} else {
-		base = strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
 	}
 
 	ext, ok := extMap[format]
@@ -64,7 +61,38 @@ func build7zArgs(src, customName string, format string, level string, method str
 	if sfx && format == "7z" {
 		ext = ".exe"
 	}
-	dest := filepath.Join(filepath.Dir(src), base+ext)
+
+	firstSrc := sources[0]
+	dir := filepath.Dir(firstSrc)
+
+	var filename string
+	if customName != "" {
+		filename = customName
+		// Ensure custom name has correct extension if not already present
+		if !strings.HasSuffix(strings.ToLower(filename), ext) {
+			filename += ext
+		}
+	} else {
+		var base string
+		if len(sources) == 1 {
+			base = strings.TrimSuffix(filepath.Base(firstSrc), filepath.Ext(firstSrc))
+		} else {
+			// If packaging multiple items, standard UI logic sets the parent directory's folder name as default
+			base = filepath.Base(dir)
+			if base == "." || base == "/" || base == string(filepath.Separator) {
+				base = "archive"
+			}
+		}
+		filename = base + ext
+	}
+
+	return filepath.Join(dir, filename)
+}
+
+func build7zArgs(src []string, customName string, format string, level string, method string, dictSize string, wordSize, blockSize string, threads, update string, sfx bool, shared bool, split string, enc bool, pass string, encName bool) []string {
+
+	// Call unified helper to get the target destination
+	dest := getArchiveDestination(src, format, customName, sfx)
 
 	// Determine if the format supports multi-file archiving/updating features
 	updatableArchiveFormat := format != "tar" && format != "gzip" && format != "bzip2" && format != "xz"
@@ -86,8 +114,10 @@ func build7zArgs(src, customName string, format string, level string, method str
 		}
 	}
 
-	// -bsp1 enables progress output to stdout, -t Map format
-	args := []string{cmdAction, dest, src, "-bsp1", "-t" + format}
+	// Build base parameters: command first, then output path, then all sources dynamically
+	args := []string{cmdAction, dest}
+	args = append(args, src...)
+	args = append(args, "-bsp1", "-t"+format)
 	args = append(args, updateSwitches...)
 
 	// Only apply compression settings if the format supports it (tar does not)
