@@ -147,7 +147,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 							// Note: os/exec handles spaces safely automatically, no manual shell-escaping needed
 							args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwdEntry.Text}
 							tabs.Select(StatusTabRank)
-							startOperation(args, "Extracting", w, onSuccess)
+							startOperation(args, "Extracting", "", w, onSuccess)
 						} else {
 							setInfo("Extraction cancelled.")
 						}
@@ -159,7 +159,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 					// Proceed normally if no password is required
 					args := []string{"x", src, "-o" + dest, "-bsp1", "-y"}
 					tabs.Select(StatusTabRank)
-					startOperation(args, "Extracting", w, onSuccess)
+					startOperation(args, "Extracting", "", w, onSuccess)
 				}
 			})
 		}()

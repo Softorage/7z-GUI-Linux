@@ -190,7 +190,7 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 				tabs.Select(StatusTabRank)
 
 				// Run calculation asynchronously via operations.go wrapper
-				startOperation(args, "Checksums", w, onSuccess)
+				startOperation(args, "Checksums", "", w, onSuccess)
 			},
 			w,
 		)

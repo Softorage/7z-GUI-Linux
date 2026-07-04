@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os/exec"
 	"strings"
 	"sync"
@@ -51,6 +52,9 @@ var (
 	consoleLog     *widget.Entry
 	lastLogText    string
 	logTextMu      sync.Mutex
+
+	currentCancel context.CancelFunc
+	cancelMu      sync.Mutex
 )
 
 var root7zCmd string = "7z"

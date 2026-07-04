@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -179,17 +180,19 @@ func build7zArgs(src, customName string, format string, level string, method str
 	return args
 }
 
-func startOperation(args []string, mode string, w fyne.Window, onSuccess func()) {
+// startOperation executes a 7-Zip command with context-based cancellation and custom working directories.
+func startOperation(args []string, mode string, workingDir string, w fyne.Window, onSuccess func()) {
 	fileName := "Unknown"
 	if len(args) > 1 {
-		fileName = filepath.Base(args[1]) // Get just the filename from path; TODO: doesn't work with checksum command
+		fileName = filepath.Base(args[1]) // Get just the filename from path;
+		// TODO: doesn't work well with checksum command
 	}
 
 	stateMu.Lock()
 	// Prevent launching a new operation if one is already running
 	if isOperationRunning {
 		stateMu.Unlock()
-		return 
+		return
 	}
 
 	logEntry := operationLog{
@@ -202,27 +205,45 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 	historyData = append([]operationLog{logEntry}, historyData...) // Prepend to show newest first
 	entryIndex := 0                                                // Since we prepend, it's always at the top
 	stateMu.Unlock()
+
 	fyne.Do(func() {
 		historyList.Refresh()
 	})
-	currentCmd = exec.Command(root7zCmd, args...)
 
-	stdout, err := currentCmd.StdoutPipe()
+	// Setup context for safe and immediate process termination
+	cancelMu.Lock()
+	ctx, cancel := context.WithCancel(context.Background())
+	currentCancel = cancel
+	cancelMu.Unlock()
+
+	// Use CommandContext instead of raw Command to handle system-level process group cleanups
+	cmd := exec.CommandContext(ctx, root7zCmd, args...)
+	if workingDir != "" {
+		cmd.Dir = workingDir // Prevent absolute folder tree nesting
+	}
+
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		cancel()
 		fyne.Do(func() {
 			setFinalStatus(fmt.Sprintf("Error connecting to output: %v", err))
 		})
 		return
 	}
 
-	// Capture stderr for potential errors
-	stderr, err := currentCmd.StderrPipe()
+	stderr, err := cmd.StderrPipe()
 	if err != nil {
+		cancel()
 		fyne.Do(func() {
 			setFinalStatus(fmt.Sprintf("Error connecting to stderr: %v", err))
 		})
 		return
 	}
+
+	// It is now safe to share cmd globally
+	stateMu.Lock()
+	currentCmd = cmd
+	stateMu.Unlock()
 
 	// Initialize the console log text for this run
 	logMu.Lock()
@@ -230,6 +251,9 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 		logLines = append(logLines, "") // Break apart separate runs visually
 	}
 	commandStr := fmt.Sprintf("Running: %s %s", root7zCmd, strings.Join(args, " "))
+	if workingDir != "" {
+		commandStr += fmt.Sprintf(" (Dir: %s)", workingDir)
+	}
 	logLines = append(logLines, "========================================", commandStr)
 	currentLogLine = currentLogLine[:0]
 	logMu.Unlock()
@@ -253,8 +277,9 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 	})
 	startTime := time.Now()
 
-	err = currentCmd.Start()
+	err = cmd.Start()
 	if err != nil {
+		cancel()
 		stateMu.Lock()
 		isOperationRunning = false
 		currentCmd = nil
@@ -354,7 +379,7 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 			}
 		}
 
-		err = currentCmd.Wait()
+		err = cmd.Wait()
 
 		// Final Log UI Update (catches the very last fragments)
 		updateConsoleLog(getFullLogText())
@@ -363,15 +388,21 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 		stateMu.Lock()
 		isOperationRunning = false
 		currentCmd = nil
+		stateMu.Unlock()
+
+		cancelMu.Lock()
+		cancel() // Clean up context resources
+		cancelMu.Unlock()
 
 		finalStatus := "Completed"
 		if err != nil {
-			if err.Error() == "signal: killed" {
+			if ctx.Err() == context.Canceled || err.Error() == "signal: killed" {
 				finalStatus = "Cancelled"
 			} else {
 				finalStatus = "Error"
 			}
 		}
+		stateMu.Lock()
 		if len(historyData) > entryIndex {
 			historyData[entryIndex].Status = finalStatus
 		}
@@ -379,13 +410,12 @@ func startOperation(args []string, mode string, w fyne.Window, onSuccess func())
 
 		fyne.Do(func() {
 			historyList.Refresh()
-
 			pauseBtn.Disable()
 			cancelBtn.Disable()
 
 			if err != nil {
 				progressBar.SetValue(0.0)
-				if err.Error() == "signal: killed" {
+				if ctx.Err() == context.Canceled || err.Error() == "signal: killed" {
 					setFinalStatus("Operation was cancelled by user.")
 					setInfo("Cancelled.")
 				} else {

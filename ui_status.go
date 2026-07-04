@@ -82,12 +82,12 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	pauseBtn.Disable()
 
 	cancelBtn = widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
-		stateMu.Lock()
-		defer stateMu.Unlock()
-		if currentCmd != nil && currentCmd.Process != nil {
-			currentCmd.Process.Kill()
-			setInfo("Operation Cancelled.")
+		cancelMu.Lock()
+		if currentCancel != nil {
+			currentCancel() // Clean execution cancellation via context
+			setInfo("Operation cancelled by user context request.")
 		}
+		cancelMu.Unlock()
 	})
 	cancelBtn.Disable()
 
