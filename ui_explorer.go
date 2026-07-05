@@ -217,7 +217,7 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 	favToolbar := container.NewHBox(addFavBtn, removeFavBtn, renameFavBtn)
 	favSidebar := container.NewBorder(
 		container.NewVBox(
-			widget.NewLabelWithStyle("Favorites", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+			widget.NewLabelWithStyle("Favorites", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			widget.NewSeparator(),
 		),
 		container.NewVBox(
@@ -230,17 +230,6 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 	)
 
 	docTabs = container.NewDocTabs()
-
-	newTabBtn := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
-		homePath, err := os.UserHomeDir()
-		if err != nil {
-			homePath = "/"
-		}
-		newTab := createBrowserTab(w, homePath)
-		docTabs.Append(newTab)
-		docTabs.Select(newTab)
-	})
-	newTabBtn.Importance = widget.HighImportance
 
 	docTabs.CreateTab = func() *container.TabItem {
 		homePath, err := os.UserHomeDir()
@@ -264,18 +253,23 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 	docTabs.Append(initialTab)
 	docTabs.Select(initialTab)
 
-	rightLayout := container.NewBorder(
-		container.NewBorder(nil, nil, nil, newTabBtn, widget.NewLabel("")),
-		nil,
-		nil,
-		nil,
-		docTabs,
-	)
+	rightLayout := docTabs
 
 	split := container.NewHSplit(favSidebar, rightLayout)
 	split.Offset = 0.2
 
-	return split
+	finalLayout := container.NewPadded(container.NewBorder(
+		container.NewVBox(
+			widget.NewRichTextFromMarkdown("## Explorer"),
+			widget.NewSeparator(),
+		),
+		nil,
+		nil,
+		nil,
+		split,
+	))
+
+	return finalLayout
 }
 
 // createBrowserTab instantiates the UI components and context for a unique tab
@@ -326,8 +320,8 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 			modified := widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{})
 
 			colName := container.NewHBox(icon, name)
-			grid := container.NewGridWithColumns(3, colName, size, modified)
-			return container.NewBorder(nil, nil, check, nil, grid)
+			row := container.NewHBox(colName, layout.NewSpacer(), size, widget.NewSeparator(), modified)
+			return container.NewBorder(nil, nil, check, nil, row)
 		},
 		func(id widget.ListItemID, o fyne.CanvasObject) {
 			if id >= len(state.items) {
@@ -337,25 +331,25 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 
 			border := o.(*fyne.Container)
 			var check *widget.Check
-			var grid *fyne.Container
+			var rowContainer *fyne.Container
 
 			for _, obj := range border.Objects {
 				if chk, ok := obj.(*widget.Check); ok {
 					check = chk
-				} else if g, ok := obj.(*fyne.Container); ok {
-					grid = g
+				} else if r, ok := obj.(*fyne.Container); ok {
+					rowContainer = r
 				}
 			}
 
-			if check == nil || grid == nil {
+			if check == nil || rowContainer == nil {
 				return
 			}
 
-			colName := grid.Objects[0].(*fyne.Container)
+			colName := rowContainer.Objects[0].(*fyne.Container)
 			icon := colName.Objects[0].(*widget.Icon)
 			name := colName.Objects[1].(*widget.Label)
-			size := grid.Objects[1].(*widget.Label)
-			modified := grid.Objects[2].(*widget.Label)
+			size := rowContainer.Objects[2].(*widget.Label)
+			modified := rowContainer.Objects[4].(*widget.Label)
 
 			check.OnChanged = nil
 			check.SetChecked(state.selectedItems[item.Name])
@@ -363,7 +357,7 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 				state.selectedItems[item.Name] = checked
 			}
 
-			name.SetText(truncateDisplayPath(item.Name, 35))
+			name.SetText(truncateDisplayPath(item.Name, 50))
 			if item.IsDir {
 				icon.SetResource(theme.FolderIcon())
 				size.SetText("Directory")
@@ -413,43 +407,53 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 
 	state.fileList = list
 
-	cutBtn := widget.NewButtonWithIcon("Cut", theme.ContentCutIcon(), func() {
+	cutBtn := widget.NewButtonWithIcon("", theme.ContentCutIcon(), func() {
 		addToClipboard(state, "cut")
 	})
 	cutBtn.Importance = widget.LowImportance
 
-	copyBtn := widget.NewButtonWithIcon("Copy", theme.ContentCopyIcon(), func() {
+	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
 		addToClipboard(state, "copy")
 	})
 	copyBtn.Importance = widget.LowImportance
 
-	pasteBtn := widget.NewButtonWithIcon("Paste", theme.ContentPasteIcon(), func() {
+	pasteBtn := widget.NewButtonWithIcon("", theme.ContentPasteIcon(), func() {
 		handlePaste(state, w)
 	})
 	pasteBtn.Importance = widget.LowImportance
 
-	deleteBtn := widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), func() {
+	deleteBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
 		handleDelete(state, w)
 	})
 	deleteBtn.Importance = widget.LowImportance
 
-	clipBtn := widget.NewButtonWithIcon("Clipboard", theme.ListIcon(), func() {
+	clipBtn := widget.NewButtonWithIcon("", theme.ListIcon(), func() {
 		showClipboardDialog(w)
 	})
 	clipBtn.Importance = widget.LowImportance
 
-	refreshBtn := widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), func() {
+	refreshBtn := widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() {
 		state.refresh(w)
 	})
 	refreshBtn.Importance = widget.LowImportance
 
-	showHiddenCheck := widget.NewCheck("Show Hidden", func(checked bool) {
-		state.showHidden = checked
+	var showHiddenFilesBtn *widget.Button
+	showHiddenFilesBtn = widget.NewButtonWithIcon("", theme.VisibilityOffIcon(), func() {
+		state.showHidden = !state.showHidden
+		if state.showHidden {
+			showHiddenFilesBtn.SetIcon(theme.VisibilityIcon())
+			setInfo("Showing hidden files.")
+		} else {
+			showHiddenFilesBtn.SetIcon(theme.VisibilityOffIcon())
+			setInfo("Hiding hidden files.")
+		}
 		state.refresh(w)
 	})
+	showHiddenFilesBtn.Importance = widget.LowImportance
+
 
 	topActionBar := container.NewHBox(
-		cutBtn, copyBtn, pasteBtn, deleteBtn, clipBtn, refreshBtn, layout.NewSpacer(), showHiddenCheck,
+		cutBtn, copyBtn, pasteBtn, deleteBtn, layout.NewSpacer(), clipBtn, refreshBtn, showHiddenFilesBtn,
 	)
 
 	compressContextBtn := widget.NewButtonWithIcon("Compress", theme.ConfirmIcon(), func() {
