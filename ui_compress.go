@@ -117,11 +117,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			}
 
 			// Format text with display truncation
-			displayPath := path
-			if len(displayPath) > 55 {
-				displayPath = "..." + displayPath[len(displayPath)-52:]
-			}
-			labelWidget.SetText(displayPath)
+			labelWidget.SetText(truncateDisplayPath(path, 55))
 
 			// Detect directories vs files to select matching system theme icons [1]
 			isDir := false

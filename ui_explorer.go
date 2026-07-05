@@ -322,8 +322,8 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 			check := widget.NewCheck("", nil)
 			icon := widget.NewIcon(theme.FileIcon())
 			name := widget.NewLabel("")
-			size := widget.NewLabel("")
-			modified := widget.NewLabel("")
+			size := widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{})
+			modified := widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{})
 
 			colName := container.NewHBox(icon, name)
 			grid := container.NewGridWithColumns(3, colName, size, modified)
@@ -363,7 +363,7 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 				state.selectedItems[item.Name] = checked
 			}
 
-			name.SetText(item.Name)
+			name.SetText(truncateDisplayPath(item.Name, 35))
 			if item.IsDir {
 				icon.SetResource(theme.FolderIcon())
 				size.SetText("Directory")
@@ -1259,12 +1259,15 @@ func moveFileOrDir(src, dst string) error {
 
 func showClipboardDialog(w fyne.Window) {
 	clipboardMu.Lock()
-	defer clipboardMu.Unlock()
+	// Create a local copy to avoid holding the global clipboard lock during UI initialization and rendering
+	localItems := make([]clipboardItem, len(globalClipboard))
+	copy(localItems, globalClipboard)
+	clipboardMu.Unlock()
 
 	var list *widget.List
 	list = widget.NewList(
 		func() int {
-			return len(globalClipboard)
+			return len(localItems)
 		},
 		func() fyne.CanvasObject {
 			pathLbl := widget.NewLabel("")
@@ -1275,13 +1278,10 @@ func showClipboardDialog(w fyne.Window) {
 			return container.NewBorder(nil, nil, nil, delBtn, container.NewHBox(opLbl, typeLbl, pathLbl))
 		},
 		func(id widget.ListItemID, o fyne.CanvasObject) {
-			clipboardMu.Lock()
-			if id >= len(globalClipboard) {
-				clipboardMu.Unlock()
+			if id >= len(localItems) {
 				return
 			}
-			item := globalClipboard[id]
-			clipboardMu.Unlock()
+			item := localItems[id]
 
 			border := o.(*fyne.Container)
 			var delBtn *widget.Button
@@ -1316,13 +1316,15 @@ func showClipboardDialog(w fyne.Window) {
 				typeLbl.SetText("[File]")
 			}
 
-			pathLbl.SetText(item.Path)
+			pathLbl.SetText(truncateDisplayPath(item.Path, 50))
 
 			delBtn.OnTapped = func() {
 				clipboardMu.Lock()
-				if id < len(globalClipboard) {
-					globalClipboard = append(globalClipboard[:id], globalClipboard[id+1:]...)
+				if id < len(localItems) {
+					localItems = append(localItems[:id], localItems[id+1:]...)
 				}
+				globalClipboard = make([]clipboardItem, len(localItems))
+				copy(globalClipboard, localItems)
 				clipboardMu.Unlock()
 				list.Refresh()
 			}
@@ -1331,6 +1333,7 @@ func showClipboardDialog(w fyne.Window) {
 
 	clearBtn := widget.NewButton("Clear All", func() {
 		clipboardMu.Lock()
+		localItems = nil
 		globalClipboard = nil
 		clipboardMu.Unlock()
 		list.Refresh()

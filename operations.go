@@ -465,3 +465,14 @@ func startOperation(args []string, mode string, workingDir string, w fyne.Window
 		})
 	}()
 }
+
+// truncateDisplayPath truncates a string with leading ellipsis if it exceeds maxLen
+func truncateDisplayPath(path string, maxLen int) string {
+	if len(path) <= maxLen {
+		return path
+	}
+	if maxLen <= 3 {
+		return path
+	}
+	return "..." + path[len(path)-(maxLen-3):]
+}
