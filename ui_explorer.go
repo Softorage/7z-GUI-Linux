@@ -27,6 +27,7 @@ type fileSystemItem struct {
 	Name     string
 	Path     string // Full disk path or full internal relative path
 	IsDir    bool
+	IsSymlink bool
 	Size     int64
 	Modified string
 }
@@ -380,13 +381,25 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 				state.selectedItems[item.Name] = checked
 			}
 
-			name.SetText(truncateDisplayPath(item.Name, 50))
+			displayName := truncateDisplayPath(item.Name, 50)
+			name.SetText(displayName)
+
 			if item.IsDir {
-				icon.SetResource(theme.FolderIcon())
-				size.SetText("Directory")
+				if item.IsSymlink {
+					icon.SetResource(theme.NavigateNextIcon())
+					size.SetText("Directory Link")
+				} else {
+					icon.SetResource(theme.FolderIcon())
+					size.SetText("Directory")
+				}
 			} else {
-				icon.SetResource(theme.FileIcon())
-				size.SetText(formatSize(item.Size))
+				if item.IsSymlink {
+					icon.SetResource(theme.NavigateNextIcon())
+					size.SetText("File Link")
+				} else {
+					icon.SetResource(theme.FileIcon())
+					size.SetText(formatSize(item.Size))
+				}
 			}
 			modified.SetText(item.Modified)
 
@@ -670,15 +683,24 @@ func getLocalItems(dirPath string, showHidden bool) ([]fileSystemItem, error) {
 			modified = info.ModTime().Format("2006-01-02 15:04:05")
 		}
 
+		isSymlink := entry.Type()&os.ModeSymlink != 0
+		isDir := entry.IsDir()
+		if !isDir && isSymlink {
+			if targetInfo, err := os.Stat(fullPath); err == nil {
+				isDir = targetInfo.IsDir()
+			}
+		}
+
 		item := fileSystemItem{
 			Name:     name,
 			Path:     fullPath,
-			IsDir:    entry.IsDir(),
+			IsDir:    isDir,
+			IsSymlink: isSymlink,
 			Size:     size,
 			Modified: modified,
 		}
 
-		if entry.IsDir() {
+		if isDir {
 			dirs = append(dirs, item)
 		} else {
 			files = append(files, item)
@@ -1258,9 +1280,19 @@ func deleteFromArchive(archivePath string, relPaths []string, w fyne.Window, onS
 }
 
 func copyFileOrDir(src, dst string) error {
-	info, err := os.Stat(src)
+	info, err := os.Lstat(src) // Read entry metadata without resolving symlinks
 	if err != nil {
 		return err
+	}
+	// Check for symlink
+	if info.Mode()&os.ModeSymlink != 0 {
+		// Perform a shallow copy by recreating the link
+		target, err := os.Readlink(src)
+		if err != nil {
+			return err
+		}
+		_ = os.Remove(dst) // Remove any pre-existing file/link at destination
+		return os.Symlink(target, dst)
 	}
 	if info.IsDir() {
 		return copyDir(src, dst)
@@ -1286,7 +1318,7 @@ func copyFile(src, dst string) error {
 }
 
 func copyDir(src, dst string) error {
-	info, err := os.Stat(src)
+	info, err := os.Lstat(src) // Read directory metadata safely
 	if err != nil {
 		return err
 	}
