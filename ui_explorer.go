@@ -90,6 +90,8 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 
 	favList = widget.NewList(
 		func() int {
+			favoritesMu.Lock()
+			defer favoritesMu.Unlock()
 			return len(favorites)
 		},
 		func() fyne.CanvasObject {
@@ -597,8 +599,7 @@ func (state *explorerTabState) goUp(w fyne.Window) {
 }
 
 func updateFavoritesList() {
-	favoritesMu.Lock()
-	defer favoritesMu.Unlock()
+	// The list widget's callbacks (Length and Update) already handle their own locking
 	favList.Refresh()
 }
 
@@ -808,6 +809,11 @@ func addToClipboard(state *explorerTabState, op string) {
 	defer clipboardMu.Unlock()
 
 	hasSelection := false
+	addedCount := 0
+	updatedCount := 0
+	var lastUpdatedFrom, lastUpdatedTo string
+	var lastUpdatedPath string
+
 	for name, selected := range state.selectedItems {
 		if selected {
 			hasSelection = true
@@ -824,11 +830,32 @@ func addToClipboard(state *explorerTabState, op string) {
 				continue
 			}
 
-			globalClipboard = append(globalClipboard, clipboardItem{
-				Path:  item.Path,
-				IsDir: item.IsDir,
-				Op:    op,
-			})
+			// Search if the item path is already present in the clipboard
+			existsIdx := -1
+			for idx, cbItem := range globalClipboard {
+				if cbItem.Path == item.Path {
+					existsIdx = idx
+					break
+				}
+			}
+
+			if existsIdx != -1 {
+				oldOp := globalClipboard[existsIdx].Op
+				if oldOp != op {
+					globalClipboard[existsIdx].Op = op
+					updatedCount++
+					lastUpdatedFrom = oldOp
+					lastUpdatedTo = op
+					lastUpdatedPath = item.Name
+				}
+			} else {
+				globalClipboard = append(globalClipboard, clipboardItem{
+					Path:  item.Path,
+					IsDir: item.IsDir,
+					Op:    op,
+				})
+				addedCount++
+			}
 		}
 	}
 
@@ -837,7 +864,20 @@ func addToClipboard(state *explorerTabState, op string) {
 		return
 	}
 
-	setInfo(fmt.Sprintf("Added selected items to clipboard (%s).", op))
+	if updatedCount > 0 && addedCount == 0 {
+		if updatedCount == 1 {
+			setInfo(fmt.Sprintf("Clipboard updated for '%s': changed from %s to %s.", lastUpdatedPath, lastUpdatedFrom, lastUpdatedTo))
+		} else {
+			setInfo(fmt.Sprintf("Updated %d items in clipboard to %s.", updatedCount, op))
+		}
+	} else if addedCount > 0 && updatedCount == 0 {
+		setInfo(fmt.Sprintf("Added %d item(s) to clipboard (%s).", addedCount, op))
+	} else if addedCount > 0 && updatedCount > 0 {
+		setInfo(fmt.Sprintf("Added %d new item(s) and updated %d existing item(s) to %s.", addedCount, updatedCount, op))
+	} else {
+		setInfo(fmt.Sprintf("Selected item(s) already in clipboard as %s.", op))
+	}
+
 	state.selectedItems = make(map[string]bool)
 	state.fileList.Refresh()
 }
