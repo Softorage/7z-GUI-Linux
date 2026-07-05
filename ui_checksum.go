@@ -14,6 +14,8 @@ import (
 	"github.com/ncruces/zenity"
 )
 
+var checksumFileEntry *widget.Entry
+
 // hashRow groups the widgets representing a single checksum option.
 type hashRow struct {
 	name    string
@@ -42,6 +44,8 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 	fileEntry := widget.NewEntry()
 	fileEntry.Disable()
 	fileEntry.PlaceHolder = "Select a file to calculate checksums..."
+
+	checksumFileEntry = fileEntry
 
 	browseBtn := widget.NewButtonWithIcon("Browse", theme.FolderOpenIcon(), func() {
 		// Run in a goroutine so the Fyne UI doesn't freeze while the native dialog is open

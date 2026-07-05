@@ -33,6 +33,7 @@ func main() {
 	infoBar.Wrapping = fyne.TextWrapWord // Properly wraps text instead of resizing window
 
 	// Build Tab Contents
+	explorerTab := buildExplorerTab(w)
 	compressTab := buildCompressTab(w)
 	extractTab := buildExtractTab(w)
 	checksumTab := buildChecksumTab(w)
@@ -42,7 +43,8 @@ func main() {
 	contentArea := container.NewMax()
 
 	// Construct Sidebar Tabs Menu
-	titles := make([]string, 4)
+	titles := make([]string, 5)
+	titles[ExplorerTabRank] = "Explorer"
 	titles[CompressTabRank] = "Compress"
 	titles[ExtractTabRank] = "Extract"
 	titles[ChecksumTabRank] = "Checksum"
@@ -75,6 +77,8 @@ func main() {
 
 		// Swap out the objects inside the main content area
 		switch id {
+		case ExplorerTabRank:
+			contentArea.Objects = []fyne.CanvasObject{explorerTab}
 		case CompressTabRank:
 			contentArea.Objects = []fyne.CanvasObject{compressTab}
 		case ExtractTabRank:
@@ -178,7 +182,7 @@ func main() {
 	w.SetContent(mainLayout)
 
 	// Pre-select first tab
-	tabs.Select(CompressTabRank)
+	tabs.Select(ExplorerTabRank)
 
 	// Dependency check
 	checkDependencies(w)

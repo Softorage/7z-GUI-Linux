@@ -16,9 +16,15 @@ import (
 	"github.com/ncruces/zenity"
 )
 
+var extractSrcEntry *widget.Entry
+var extractDestEntry *widget.Entry
+
 func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 	srcEntry := widget.NewEntry()
 	destEntry := widget.NewEntry()
+
+	extractSrcEntry = srcEntry
+	extractDestEntry = destEntry
 
 	autoOpenCheck := widget.NewCheck("Auto-open folder after extraction", nil)
 	autoOpenCheck.OnChanged = func(_ bool) {

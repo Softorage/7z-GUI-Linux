@@ -61,10 +61,11 @@ var root7zCmd string = "7z"
 
 // Tab indices to avoid magic numbers and simplify reordering
 const (
-	CompressTabRank = 0
-	ExtractTabRank  = 1
-	ChecksumTabRank = 2
-	StatusTabRank   = 3
+	ExplorerTabRank = 0
+	CompressTabRank = 1
+	ExtractTabRank  = 2
+	ChecksumTabRank = 3
+	StatusTabRank   = 4
 )
 
 // setInfo updates the bottom info bar and sets a 6-second timer to clear it.
