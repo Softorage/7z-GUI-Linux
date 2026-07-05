@@ -37,7 +37,7 @@ Please leave a star if you find it useful!
 | --- | --- |
 | Explorer | ![Explorer](/dist/images/screenshots/v0.3.0/Explorer.png) |
 | Clipboard | ![Clipboard](/dist/images/screenshots/v0.3.0/Clipboard.png) |
-| Compress | ![Compress1](/dist/images/screenshots/v0.3.0/Compress1.png) <br> ![Compress1](/dist/images/screenshots/v0.3.0/Compress1.png) |
+| Compress | ![Compress1](/dist/images/screenshots/v0.3.0/Compress1.png) <br> ![Compress1](/dist/images/screenshots/v0.3.0/Compress2.png) |
 | Extract | ![Extract](/dist/images/screenshots/v0.3.0/Extract.png) |
 | Checksum | ![Checksum](/dist/images/screenshots/v0.3.0/Checksum1.png) <br> ![Checksum](/dist/images/screenshots/v0.3.0/Checksum2.png) |
 | Operations History (Status) | ![Power Limit](/dist/images/screenshots/v0.3.0/OpHistory_Status.png) |
