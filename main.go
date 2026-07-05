@@ -25,7 +25,7 @@ func main() {
 	a := app.NewWithID("com.softorage.7gl")
 	a.SetIcon(resourceLogoPng)
 	w := a.NewWindow("7-Zip GUI for Linux")
-	w.Resize(fyne.NewSize(900, 650))
+	w.Resize(fyne.NewSize(1040, 650))
 
 	// Bottom Info Bar
 	infoBar = widget.NewLabel("Ready. Interact with an option to see its description.")
@@ -125,12 +125,12 @@ func main() {
 	sponsorURL, _ := url.Parse("https://rzp.io/rzp/hY39lZGa")
 
 	//sourceCodeBtn := widget.NewButtonWithIcon("View Source", resourceSourceCodeSvg, func() { a.OpenURL(sourceCodeURL) })
-	sourceCodeBtn := widget.NewButton("View Source", func() { a.OpenURL(sourceCodeURL) })
+	sourceCodeBtn := widget.NewButton("View Source ↗", func() { a.OpenURL(sourceCodeURL) })
 	//sourceCodeBtn.IconPlacement = widget.ButtonIconLeadingText
 	sourceCodeBtn.Importance = widget.LowImportance
 	sourceCodeBtn.Alignment = widget.ButtonAlignLeading
 
-	sponsorBtn := widget.NewButton("Sponsor", func() { a.OpenURL(sponsorURL) })
+	sponsorBtn := widget.NewButton("Sponsor ↗", func() { a.OpenURL(sponsorURL) })
 	sponsorBtn.Importance = widget.LowImportance
 	sponsorBtn.Alignment = widget.ButtonAlignLeading
 

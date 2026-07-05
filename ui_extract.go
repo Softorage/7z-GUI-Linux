@@ -20,10 +20,12 @@ var extractSrcEntry *widget.Entry
 var extractDestEntry *widget.Entry
 
 func buildExtractTab(w fyne.Window) fyne.CanvasObject {
-	srcEntry := widget.NewEntry()
-	destEntry := widget.NewEntry()
+	var selectedArchives []string
 
-	extractSrcEntry = srcEntry
+	// Backward compatibility global entry (hidden listener)
+	extractSrcEntry = widget.NewEntry()
+
+	destEntry := widget.NewEntry()
 	extractDestEntry = destEntry
 
 	autoOpenCheck := widget.NewCheck("Auto-open folder after extraction", nil)
@@ -33,45 +35,176 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 
 	createSubfolderCheck := widget.NewCheck("Extract to sub-folder", nil)
 	createSubfolderCheck.SetChecked(true)
-	createSubfolderCheck.OnChanged = func(checked bool) {
-		setInfo("Extract into a new folder named after the archive.")
-	}
 
-	updateDestBtn := widget.NewButton("Update Destination", func() {
-		if srcEntry.Text == "" {
+	// Helper to resolve the top-level path
+	updateDestPath := func() {
+		if len(selectedArchives) == 0 {
+			destEntry.SetText("")
 			return
 		}
-		parentPath := filepath.Dir(srcEntry.Text)
-		if createSubfolderCheck.Checked {
-			baseName := strings.TrimSuffix(filepath.Base(srcEntry.Text), filepath.Ext(srcEntry.Text))
+		parentPath := filepath.Dir(selectedArchives[0])
+		if len(selectedArchives) == 1 && createSubfolderCheck.Checked {
+			baseName := strings.TrimSuffix(filepath.Base(selectedArchives[0]), filepath.Ext(selectedArchives[0]))
 			destEntry.SetText(filepath.Join(parentPath, baseName))
 		} else {
 			destEntry.SetText(parentPath)
 		}
-	})
+	}
+	
+	createSubfolderCheck.OnChanged = func(_ bool) {
+		setInfo("Extract into a new folder named after the archive.")
+		// Trigger local update of path destination preview
+		updateDestPath()
+	}
 
-	srcBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
-		// Run in a goroutine so the Fyne UI doesn't freeze while the native dialog is open
-		go func() {
-			file, err := zenity.SelectFile(
-				zenity.Title("Select Archive"),
-				// Decide: We can filter extensions like this
-				// zenity.FileFilter{Name: "Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz"}},
-			)
-			if err == nil && file != "" {
-				fyne.Do(func() {
-					srcEntry.SetText(file)
+	var archiveList *widget.List
+	archiveList = widget.NewList(
+		func() int {
+			return len(selectedArchives)
+		},
+		func() fyne.CanvasObject {
+			icon := widget.NewIcon(theme.FileIcon())
+			lbl := widget.NewLabel("Template path placeholder")
+			lbl.TextStyle = fyne.TextStyle{Bold: false}
 
-					destPath := filepath.Dir(file)
-					if createSubfolderCheck.Checked {
-						baseName := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
-						destPath = filepath.Join(destPath, baseName)
+			deleteBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), nil)
+			deleteBtn.Importance = widget.LowImportance
+
+			return container.NewBorder(nil, nil, icon, deleteBtn, lbl)
+		},
+		func(id widget.ListItemID, o fyne.CanvasObject) {
+			if id >= len(selectedArchives) {
+				return
+			}
+			path := selectedArchives[id]
+			borderContainer := o.(*fyne.Container)
+
+			var iconWidget *widget.Icon
+			var labelWidget *widget.Label
+			var btnWidget *widget.Button
+
+			for _, obj := range borderContainer.Objects {
+				switch typed := obj.(type) {
+				case *widget.Icon:
+					iconWidget = typed
+				case *widget.Label:
+					labelWidget = typed
+				case *widget.Button:
+					btnWidget = typed
+				}
+			}
+
+			if iconWidget == nil || labelWidget == nil || btnWidget == nil {
+				return
+			}
+
+			labelWidget.SetText(truncateDisplayPath(path, 55))
+			iconWidget.SetResource(theme.FileIcon())
+
+			btnWidget.OnTapped = func() {
+				for i, s := range selectedArchives {
+					if s == path {
+						selectedArchives = append(selectedArchives[:i], selectedArchives[i+1:]...)
+						break
 					}
-					destEntry.SetText(destPath)
+				}
+				archiveList.Refresh()
+				fyne.Do(func() {
+					if len(selectedArchives) == 0 {
+						archiveList.Hide()
+					}
+					updateDestPath()
+				})
+			}
+		},
+	)
+
+	archiveList.OnSelected = func(id widget.ListItemID) {
+		archiveList.Unselect(id)
+	}
+
+	listPlaceholder := widget.NewLabel("No archive files selected. Use the buttons on the right to add archives.")
+	listPlaceholder.Alignment = fyne.TextAlignCenter
+
+	listStack := container.NewStack(archiveList, listPlaceholder)
+
+	refreshArchiveList := func() {
+		if len(selectedArchives) == 0 {
+			archiveList.Hide()
+			listPlaceholder.Show()
+		} else {
+			archiveList.Show()
+			listPlaceholder.Hide()
+			archiveList.Refresh()
+		}
+		listStack.Refresh()
+		updateDestPath()
+	}
+
+	extractSrcEntry.OnChanged = func(val string) {
+		if val == "" {
+			return
+		}
+		paths := strings.Split(val, "\n")
+		hasChanges := false
+		for _, p := range paths {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				exists := false
+				for _, s := range selectedArchives {
+					if s == p {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					selectedArchives = append(selectedArchives, p)
+					hasChanges = true
+				}
+			}
+		}
+		if hasChanges {
+			extractSrcEntry.SetText("") // Clear listening value safely to prevent recurrences
+			refreshArchiveList()
+		}
+	}
+
+	browseFileBtn := widget.NewButtonWithIcon("Add Archives", theme.FileIcon(), func() {
+		go func() {
+			files, err := zenity.SelectFileMultiple(
+				zenity.Title("Select Archives"),
+				zenity.FileFilters{
+					{Name: "Supported Archives", Patterns: []string{"*.zip", "*.7z", "*.rar", "*.tar.gz", "*.tar", "*.gz", "*.bz2", "*.xz", "*.wim"}},
+				},
+			)
+			if err == nil && len(files) > 0 {
+				fyne.Do(func() {
+					for _, f := range files {
+						exists := false
+						for _, s := range selectedArchives {
+							if s == f {
+								exists = true
+								break
+							}
+						}
+						if !exists {
+							selectedArchives = append(selectedArchives, f)
+						}
+					}
+					refreshArchiveList()
 				})
 			}
 		}()
 	})
+
+	clearBtn := widget.NewButtonWithIcon("Clear All", theme.ContentClearIcon(), func() {
+		selectedArchives = nil
+		refreshArchiveList()
+	})
+	clearBtn.Importance = widget.LowImportance
+
+	browseBtns := container.NewVBox(browseFileBtn, clearBtn)
+	srcContainer := container.NewBorder(nil, nil, nil, browseBtns, listStack)
 
 	destBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
 		// Capture the current text while we are still on the main UI thread
@@ -105,6 +238,65 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 		}()
 	})
 
+	var extractNext func(idx int)
+	extractNext = func(idx int) {
+		if idx >= len(selectedArchives) {
+			if autoOpenCheck.Checked {
+				exec.Command("xdg-open", destEntry.Text).Start()
+			}
+			setInfo("All extraction tasks complete.")
+			return
+		}
+
+		src := selectedArchives[idx]
+		var dest string
+		if len(selectedArchives) > 1 && createSubfolderCheck.Checked {
+			baseName := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
+			dest = filepath.Join(destEntry.Text, baseName)
+		} else if len(selectedArchives) == 1 && createSubfolderCheck.Checked {
+			dest = destEntry.Text
+		} else {
+			dest = destEntry.Text
+		}
+
+		go func() {
+			setInfo(fmt.Sprintf("Checking %s...", filepath.Base(src)))
+			isProtected := isPasswordProtected(src)
+
+			fyne.Do(func() {
+				title := fmt.Sprintf("Extracting (%d/%d): %s", idx+1, len(selectedArchives), filepath.Base(src))
+				onFinish := func() {
+					extractNext(idx + 1)
+				}
+
+				if isProtected {
+					pwdEntry := widget.NewPasswordEntry()
+					pwdEntry.PlaceHolder = "Enter Password"
+					items := []*widget.FormItem{
+						widget.NewFormItem("Password:", pwdEntry),
+					}
+					d := dialog.NewForm("Password Required for "+filepath.Base(src), "Extract", "Cancel", items, func(submit bool) {
+						if submit {
+							args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwdEntry.Text}
+							tabs.Select(StatusTabRank)
+							startOperation(args, title, "", w, onFinish)
+						} else {
+							setInfo(fmt.Sprintf("Extraction of %s skipped.", filepath.Base(src)))
+							extractNext(idx + 1)
+						}
+					}, w)
+					windowSize := w.Canvas().Size()
+					d.Resize(fyne.NewSize(windowSize.Width*0.8, d.MinSize().Height))
+					d.Show()
+				} else {
+					args := []string{"x", src, "-o" + dest, "-bsp1", "-y"}
+					tabs.Select(StatusTabRank)
+					startOperation(args, title, "", w, onFinish)
+				}
+			})
+		}()
+	}
+
 	extractBtn := widget.NewButtonWithIcon("Extract", theme.DownloadIcon(), func() {
 		stateMu.RLock()
 		running := isOperationRunning
@@ -114,76 +306,42 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 			return
 		}
 
-		if srcEntry.Text == "" || destEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("select both archive and destination"), w)
+		if len(selectedArchives) == 0 || destEntry.Text == "" {
+			dialog.ShowError(fmt.Errorf("select both archive(s) and destination"), w)
 			return
 		}
 
-		src := srcEntry.Text
-		dest := destEntry.Text
-		autoOpenBool := autoOpenCheck.Checked
-
-		// Keep the blocking process-check inside the background goroutine
-		go func() {
-			setInfo("Checking archive...")
-
-			var onSuccess func()
-			if autoOpenBool {
-				onSuccess = func() {
-					// Utilizes xdg-open to launch the system's default file manager on Linux
-					exec.Command("xdg-open", dest).Start()
-				}
-			}
-
-			// Synchronous disk/process reading remains safely in background
-			isProtected := isPasswordProtected(src)
-
-			fyne.Do(func() {
-				if isProtected {
-					pwdEntry := widget.NewPasswordEntry()
-					pwdEntry.PlaceHolder = "Enter Password"
-
-					items := []*widget.FormItem{
-						widget.NewFormItem("Password:", pwdEntry),
-					}
-
-					d := dialog.NewForm("Password Required", "Extract", "Cancel", items, func(submit bool) {
-						if submit {
-							// Append the -p switch with the user's password
-							// Note: os/exec handles spaces safely automatically, no manual shell-escaping needed
-							args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwdEntry.Text}
-							tabs.Select(StatusTabRank)
-							startOperation(args, "Extracting", "", w, onSuccess)
-						} else {
-							setInfo("Extraction cancelled.")
-						}
-					}, w)
-					windowSize := w.Canvas().Size()
-					d.Resize(fyne.NewSize(windowSize.Width*0.8, d.MinSize().Height))
-					d.Show()
-				} else {
-					// Proceed normally if no password is required
-					args := []string{"x", src, "-o" + dest, "-bsp1", "-y"}
-					tabs.Select(StatusTabRank)
-					startOperation(args, "Extracting", "", w, onSuccess)
-				}
-			})
-		}()
+		extractNext(0)
 	})
 	extractBtn.Importance = widget.HighImportance
 
+	refreshArchiveList()
+
 	form := widget.NewForm(
-		widget.NewFormItem("Archive File:", container.NewBorder(nil, nil, nil, srcBtn, srcEntry)),
+		widget.NewFormItem("Archive Files:", srcContainer),
 		widget.NewFormItem("Extract To:", container.NewBorder(nil, nil, nil, destBtn, destEntry)),
-		widget.NewFormItem("Options:", container.NewVBox(autoOpenCheck, container.NewHBox(createSubfolderCheck, updateDestBtn))),
+		widget.NewFormItem("Options:", container.NewVBox(autoOpenCheck, createSubfolderCheck)),
 	)
 
-	return container.NewPadded(container.NewVBox(
-		widget.NewRichTextFromMarkdown("## Extract"),
-		widget.NewSeparator(),
-		form,
-		layout.NewSpacer(),
-		container.NewHBox(layout.NewSpacer(), extractBtn),
+	return container.NewPadded(container.NewBorder(
+		container.NewVBox(
+			widget.NewRichTextFromMarkdown("## Extract"),
+			widget.NewSeparator(),
+		),
+		container.NewVBox(
+			widget.NewSeparator(),
+			container.NewHBox(
+				layout.NewSpacer(),
+				widget.NewButton("Cancel", func() {
+					selectedArchives = nil
+					refreshArchiveList()
+				}),
+				extractBtn,
+			),
+		),
+		nil,
+		nil,
+		container.NewVScroll(form),
 	))
 }
 

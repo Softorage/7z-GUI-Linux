@@ -24,12 +24,12 @@ import (
 
 // fileSystemItem represents a local directory entry or a virtual file inside an archive
 type fileSystemItem struct {
-	Name     string
-	Path     string // Full disk path or full internal relative path
-	IsDir    bool
+	Name      string
+	Path      string // Full disk path or full internal relative path
+	IsDir     bool
 	IsSymlink bool
-	Size     int64
-	Modified string
+	Size      int64
+	Modified  string
 }
 
 // archiveItem holds the parsed metadata for entries within a compressed archive
@@ -71,7 +71,7 @@ type favoriteItem struct {
 }
 
 var (
-	docTabs           *container.DocTabs
+	docTabs             *container.DocTabs
 	explorerTabsState   = make(map[*container.TabItem]*explorerTabState)
 	explorerTabsStateMu sync.RWMutex
 
@@ -137,7 +137,7 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 			newTab := createBrowserTab(w, fav.Path)
 			docTabs.Append(newTab)
 			docTabs.Select(newTab)
- 		}
+		}
 	}
 
 	favList.OnUnselected = func(id widget.ListItemID) {
@@ -487,7 +487,6 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 	})
 	showHiddenFilesBtn.Importance = widget.LowImportance
 
-
 	topActionBar := container.NewHBox(
 		cutBtn, copyBtn, pasteBtn, deleteBtn, layout.NewSpacer(), clipBtn, refreshBtn, showHiddenFilesBtn,
 	)
@@ -692,12 +691,12 @@ func getLocalItems(dirPath string, showHidden bool) ([]fileSystemItem, error) {
 		}
 
 		item := fileSystemItem{
-			Name:     name,
-			Path:     fullPath,
-			IsDir:    isDir,
+			Name:      name,
+			Path:      fullPath,
+			IsDir:     isDir,
 			IsSymlink: isSymlink,
-			Size:     size,
-			Modified: modified,
+			Size:      size,
+			Modified:  modified,
 		}
 
 		if isDir {
@@ -1130,13 +1129,10 @@ func handleContextExtract(state *explorerTabState, w fyne.Window) {
 			return
 		}
 
-		extractSrcEntry.SetText(targetArchives[0])
-		destPath := filepath.Dir(targetArchives[0])
-		baseName := strings.TrimSuffix(filepath.Base(targetArchives[0]), filepath.Ext(targetArchives[0]))
-		extractDestEntry.SetText(filepath.Join(destPath, baseName))
+		extractSrcEntry.SetText(strings.Join(targetArchives, "\n"))
 
 		tabs.Select(ExtractTabRank)
-		setInfo("Archive loaded into Extract panel.")
+		setInfo("Selected archives loaded into Extract panel.")
 	}
 }
 
