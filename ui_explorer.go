@@ -201,18 +201,36 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 		currentName := favorites[selectedFavIndex].Name
 		favoritesMu.Unlock()
 
-		dialog.ShowEntryDialog("Rename Favorite", "Enter a nickname for this location:", func(newName string) {
-			newName = strings.TrimSpace(newName)
-			if newName == "" || newName == currentName {
-				return
-			}
-			favoritesMu.Lock()
-			if selectedFavIndex >= 0 && selectedFavIndex < len(favorites) {
-				favorites[selectedFavIndex].Name = newName
-			}
-			favoritesMu.Unlock()
-			updateFavoritesList()
-		}, w)
+		entry := widget.NewEntry()
+		entry.SetText(currentName)
+
+		formItem := widget.NewFormItem("Nickname", entry)
+		d := dialog.NewForm(
+			"Rename Favorite",
+			"Rename",
+			"Cancel",
+			[]*widget.FormItem{formItem},
+			func(confirmed bool) {
+				if !confirmed {
+					return
+				}
+				newName := strings.TrimSpace(entry.Text)
+				if newName == "" || newName == currentName {
+					return
+				}
+				favoritesMu.Lock()
+				if selectedFavIndex >= 0 && selectedFavIndex < len(favorites) {
+					favorites[selectedFavIndex].Name = newName
+				}
+				favoritesMu.Unlock()
+				updateFavoritesList()
+			},
+			w,
+		)
+		// Set a spacious, standard dimensions for the entry dialog
+		d.Resize(fyne.NewSize(450, 180))
+		d.Show()
+
 	})
 	renameFavBtn.Importance = widget.LowImportance
 
@@ -286,7 +304,6 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 	state.badgeLabel.TextStyle = fyne.TextStyle{Bold: true}
 
 	state.pathEntry = widget.NewEntry()
-	state.pathEntry.Disable()
 
 	upBtn := widget.NewButtonWithIcon("", theme.MoveUpIcon(), func() {
 		state.goUp(w)

@@ -40,9 +40,8 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 		{name: "SHA3-256"},
 	}
 
-	// File path entry (disabled/read-only for user, updated via browse)
+	// File path entry
 	fileEntry := widget.NewEntry()
-	fileEntry.Disable()
 	fileEntry.PlaceHolder = "Select a file to calculate checksums..."
 
 	checksumFileEntry = fileEntry
