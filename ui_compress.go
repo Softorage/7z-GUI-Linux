@@ -160,20 +160,20 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	}
 
 	// Empty State Placeholder
-	placeholder := widget.NewLabel("No files or folders selected. Use the buttons on the right to add elements.")
-	placeholder.Alignment = fyne.TextAlignCenter
+	listPlaceholder := widget.NewLabel("No files or folders selected. Use the buttons on the right to add elements.")
+	listPlaceholder.Alignment = fyne.TextAlignCenter
 
 	// Stack lists and placeholders cleanly together
-	listStack := container.NewStack(sourceList, placeholder)
+	listStack := container.NewStack(sourceList, listPlaceholder)
 
 	// Main list updating coordinator
 	refreshSourceList := func() {
 		if len(selectedSources) == 0 {
 			sourceList.Hide()
-			placeholder.Show()
+			listPlaceholder.Show()
 		} else {
 			sourceList.Show()
-			placeholder.Hide()
+			listPlaceholder.Hide()
 			sourceList.Refresh()
 		}
 		listStack.Refresh()
