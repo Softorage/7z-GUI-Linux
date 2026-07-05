@@ -132,7 +132,11 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 				state.archiveRelPath = ""
 				state.refresh(w)
 			}
-		}
+		} else {
+			newTab := createBrowserTab(w, fav.Path)
+			docTabs.Append(newTab)
+			docTabs.Select(newTab)
+ 		}
 	}
 
 	favList.OnUnselected = func(id widget.ListItemID) {
