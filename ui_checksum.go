@@ -201,7 +201,7 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 		container.NewVBox(
 			widget.NewRichTextFromMarkdown("## Checksums"),
 			widget.NewSeparator(),
-			container.NewBorder(nil, nil, nil, browseBtn, fileEntry),
+			container.NewPadded(container.NewBorder(nil, nil, nil, browseBtn, fileEntry)),
 			widget.NewLabel(""),
 		),
 		container.NewVBox(
