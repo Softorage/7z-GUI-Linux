@@ -1,7 +1,7 @@
 # 7GL
 7z GUI Linux
 
-A GUI for 7-zip on Linux with all the advanced features that you are used to. Doesn't require any dependency to run other than the 7-zip backend.
+A GUI for 7-zip on Linux with all the advanced features that you are used to, and more. Doesn't require any dependency to run other than the 7-zip backend.
 
 Uses either of the below as backend:
   - 7zz (7-zip for Linux)
@@ -35,13 +35,19 @@ Please leave a star if you find it useful!
 
 | Description | Screenshot |
 | --- | --- |
-| Compress | ![Voltage Offsets](/dist/images/screenshots/v0.2.1.25/Compress.png) |
-| Extract | ![Power Limit](/dist/images/screenshots/v0.2.1.25/Extract.png) |
-| Operations History (Status) | ![Power Limit](/dist/images/screenshots/v0.2.1.25/OpHistory_Status.png) |
-| Log (Status) | ![Power Limit](/dist/images/screenshots/v0.2.1.25/Log_Status.png) |
+| Explorer | ![Explorer](/dist/images/screenshots/v0.3.0/Explorer.png) |
+| Clipboard | ![Clipboard](/dist/images/screenshots/v0.3.0/Clipboard.png) |
+| Compress | ![Compress1](/dist/images/screenshots/v0.3.0/Compress1.png) <br> ![Compress1](/dist/images/screenshots/v0.3.0/Compress1.png) |
+| Extract | ![Extract](/dist/images/screenshots/v0.3.0/Extract.png) |
+| Checksum | ![Checksum](/dist/images/screenshots/v0.3.0/Checksum1.png) <br> ![Checksum](/dist/images/screenshots/v0.3.0/Checksum2.png) |
+| Operations History (Status) | ![Power Limit](/dist/images/screenshots/v0.3.0/OpHistory_Status.png) |
+| Log (Status) | ![Power Limit](/dist/images/screenshots/v0.3.0/Log_Status.png) |
 
 ## Features
 
+- Basic Explorer with basic file operations
+- System independent descriptive clipboard
+- Add files to existing archive
 - Compress and Extract 
 - Supports:
    - Multiple archive formats
@@ -57,10 +63,13 @@ Please leave a star if you find it useful!
    - Split to volumes
    - Encryption settings
 - Provides introductory information for various input options
+- Logging
 - Offers familiar GUI to the Windows counterpart.
 
 
 ## Usage
+
+### Install/Uninstall/Update
 
 1. Download 7z-GUI-Linux  as appropriate for you CPU architecture from [the official website](https://softorage.github.io/7z-GUI-Linux/).
 2. Extract.
@@ -85,6 +94,12 @@ Please leave a star if you find it useful!
 
 Note: If you face any crashes, please run debug build through command line, and recreate the circumstances leading to crash. Share the coutput in command line when opening the issue on GitHub.
 
+### Basic guide
+
+1. How to add files to existing archive?
+   - Simply copy the file(s) or folder(s) you wish to add to an archive
+   - Open the archive in which you wish to add the files
+   - Paste into the archive
 
 ## Building
 
