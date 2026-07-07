@@ -476,3 +476,16 @@ func truncateDisplayPath(path string, maxLen int) string {
 	}
 	return "..." + path[len(path)-(maxLen-3):]
 }
+
+// isArchiveExtension returns true if the given path has a supported archive extension.
+func isArchiveExtension(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".7z" || ext == ".zip" || ext == ".tar" || ext == ".gz" || ext == ".bz2" || ext == ".xz" || ext == ".wim" || ext == ".rar"
+}
+
+// isSingleFileArchive returns true if the archive format can only pack a single file directly.
+// TODO: Same logic as isSingleStream in ui_compress. Consider DRYing it.
+func isSingleFileArchive(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".gz" || ext == ".bz2" || ext == ".xz"
+}

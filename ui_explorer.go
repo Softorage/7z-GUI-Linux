@@ -235,7 +235,6 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 		// Set a spacious, standard dimensions for the entry dialog
 		d.Resize(fyne.NewSize(450, 180))
 		d.Show()
-
 	})
 	renameFavBtn.Importance = widget.LowImportance
 
@@ -279,7 +278,6 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 	docTabs.Select(initialTab)
 
 	rightLayout := docTabs
-
 	split := container.NewHSplit(favSidebar, rightLayout)
 	split.Offset = 0.2
 
@@ -427,9 +425,7 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 				}
 				state.refresh(w)
 			} else {
-				ext := strings.ToLower(filepath.Ext(item.Name))
-				isArch := ext == ".7z" || ext == ".zip" || ext == ".tar" || ext == ".gz" || ext == ".bz2" || ext == ".xz" || ext == ".wim" || ext == ".rar"
-				if isArch {
+				if isArchiveExtension(item.Name) {
 					state.isArchive = true
 					state.archivePath = item.Path
 					state.archiveRelPath = ""
@@ -752,10 +748,19 @@ func parseArchiveEntries(archivePath string) ([]archiveItem, bool, error) {
 				if currentItem == nil {
 					currentItem = &archiveItem{}
 				}
+				val = filepath.ToSlash(val)
+				if strings.HasSuffix(val, "/") || strings.HasSuffix(val, "\\") {
+					currentItem.IsDir = true
+					val = strings.TrimSuffix(strings.TrimSuffix(val, "/"), "\\")
+				}
 				currentItem.Path = val
 			case "Folder":
 				if currentItem != nil {
 					currentItem.IsDir = (val == "+")
+				}
+			case "Attributes":
+				if currentItem != nil && strings.Contains(strings.ToUpper(val), "D") {
+					currentItem.IsDir = true
 				}
 			case "Size":
 				if currentItem != nil {
@@ -784,10 +789,6 @@ func parseArchiveEntries(archivePath string) ([]archiveItem, bool, error) {
 }
 
 func getVirtualItems(all []archiveItem, currentRelPath string) []fileSystemItem {
-	seenDirs := make(map[string]bool)
-	var dirs []fileSystemItem
-	var files []fileSystemItem
-
 	prefix := ""
 	if currentRelPath != "" {
 		prefix = currentRelPath
@@ -795,6 +796,15 @@ func getVirtualItems(all []archiveItem, currentRelPath string) []fileSystemItem 
 			prefix += "/"
 		}
 	}
+
+	type tempItem struct {
+		isDir    bool
+		size     int64
+		modified string
+		path     string
+	}
+
+	merged := make(map[string]tempItem)
 
 	for _, item := range all {
 		path := item.Path
@@ -807,32 +817,64 @@ func getVirtualItems(all []archiveItem, currentRelPath string) []fileSystemItem 
 			continue
 		}
 
-		parts := strings.Split(rel, "/")
+		isDir := item.IsDir || strings.HasSuffix(path, "/")
+		trimmedRel := strings.TrimSuffix(rel, "/")
+		if trimmedRel == "" {
+			continue
+		}
+
+		parts := strings.Split(trimmedRel, "/")
+		name := parts[0]
+		if name == "" {
+			continue
+		}
+
 		if len(parts) > 1 {
-			dirName := parts[0]
-			if !seenDirs[dirName] {
-				seenDirs[dirName] = true
-				dirs = append(dirs, fileSystemItem{
-					Name:     dirName,
-					Path:     prefix + dirName,
-					IsDir:    true,
-					Size:     0,
-					Modified: item.Modified,
-				})
+			existing, exists := merged[name]
+			if !exists || !existing.isDir {
+				merged[name] = tempItem{
+					isDir:    true,
+					size:     0,
+					modified: item.Modified,
+					path:     prefix + name,
+				}
 			}
 		} else {
-			fItem := fileSystemItem{
-				Name:     rel,
-				Path:     item.Path,
-				IsDir:    item.IsDir,
-				Size:     item.Size,
-				Modified: item.Modified,
-			}
-			if item.IsDir {
-				dirs = append(dirs, fItem)
+			if isDir {
+				merged[name] = tempItem{
+					isDir:    true,
+					size:     0,
+					modified: item.Modified,
+					path:     prefix + name,
+				}
 			} else {
-				files = append(files, fItem)
+				if _, exists := merged[name]; !exists {
+					merged[name] = tempItem{
+						isDir:    false,
+						size:     item.Size,
+						modified: item.Modified,
+						path:     item.Path,
+					}
+				}
 			}
+		}
+	}
+
+	var dirs []fileSystemItem
+	var files []fileSystemItem
+
+	for name, info := range merged {
+		fItem := fileSystemItem{
+			Name:     name,
+			Path:     info.path,
+			IsDir:    info.isDir,
+			Size:     info.size,
+			Modified: info.modified,
+		}
+		if info.isDir {
+			dirs = append(dirs, fItem)
+		} else {
+			files = append(files, fItem)
 		}
 	}
 
@@ -936,9 +978,8 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 	clipboardMu.Unlock()
 
 	if state.isArchive {
-		ext := strings.ToLower(filepath.Ext(state.archivePath))
-		if ext == ".gz" || ext == ".bz2" || ext == ".xz" {
-			dialog.ShowError(fmt.Errorf("%s archives do not support adding multiple items or folders", ext), w)
+		if isSingleFileArchive(state.archivePath) {
+			dialog.ShowError(fmt.Errorf("%s archives do not support adding multiple items or folders", filepath.Ext(state.archivePath)), w)
 			return
 		}
 
@@ -1015,13 +1056,18 @@ func handleDelete(state *explorerTabState, w fyne.Window) {
 		}
 
 		if state.isArchive {
-			ext := strings.ToLower(filepath.Ext(state.archivePath))
-			if ext == ".gz" || ext == ".bz2" || ext == ".xz" {
-				dialog.ShowError(fmt.Errorf("%s archives do not support item deletion", ext), w)
+			if isSingleFileArchive(state.archivePath) {
+				dialog.ShowError(fmt.Errorf("%s archives do not support item deletion", filepath.Ext(state.archivePath)), w)
 				return
 			}
 
 			onSuccess := func() {
+				var deletedPaths []string
+				for _, t := range targets {
+					deletedPaths = append(deletedPaths, filepath.Join(state.archiveRelPath, t))
+				}
+				removeFromClipboard(deletedPaths, true)
+
 				fyne.Do(func() {
 					state.refresh(w)
 					setInfo("Successfully deleted from archive.")
@@ -1036,12 +1082,19 @@ func handleDelete(state *explorerTabState, w fyne.Window) {
 			go func() {
 				setInfo("Deleting items...")
 				var errors []error
+				var deletedPaths []string
 				for _, t := range targets {
 					fullPath := filepath.Join(state.currentPath, t)
 					err := os.RemoveAll(fullPath)
 					if err != nil {
 						errors = append(errors, err)
+					} else {
+						deletedPaths = append(deletedPaths, fullPath)
 					}
+				}
+
+				if len(deletedPaths) > 0 {
+					removeFromClipboard(deletedPaths, false)
 				}
 
 				fyne.Do(func() {
@@ -1116,9 +1169,7 @@ func handleContextExtract(state *explorerTabState, w fyne.Window) {
 		var targetArchives []string
 		for name, selected := range state.selectedItems {
 			if selected {
-				ext := strings.ToLower(filepath.Ext(name))
-				isArch := ext == ".7z" || ext == ".zip" || ext == ".tar" || ext == ".gz" || ext == ".bz2" || ext == ".xz" || ext == ".wim" || ext == ".rar"
-				if isArch {
+				if isArchiveExtension(name) {
 					targetArchives = append(targetArchives, filepath.Join(state.currentPath, name))
 				}
 			}
@@ -1462,4 +1513,35 @@ func formatSize(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+func removeFromClipboard(deletedPaths []string, isArchive bool) {
+	clipboardMu.Lock()
+	defer clipboardMu.Unlock()
+
+	var newClipboard []clipboardItem
+	for _, cbItem := range globalClipboard {
+		keep := true
+		for _, delPath := range deletedPaths {
+			if !isArchive {
+				cbClean := filepath.Clean(cbItem.Path)
+				delClean := filepath.Clean(delPath)
+				if cbClean == delClean || strings.HasPrefix(cbClean, delClean+string(filepath.Separator)) {
+					keep = false
+					break
+				}
+			} else {
+				cbClean := filepath.ToSlash(filepath.Clean(cbItem.Path))
+				delClean := filepath.ToSlash(filepath.Clean(delPath))
+				if cbClean == delClean || strings.HasPrefix(cbClean, delClean+"/") {
+					keep = false
+					break
+				}
+			}
+		}
+		if keep {
+			newClipboard = append(newClipboard, cbItem)
+		}
+	}
+	globalClipboard = newClipboard
 }
