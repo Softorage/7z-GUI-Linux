@@ -37,17 +37,19 @@ Please leave a star if you find it useful!
 | --- | --- |
 | Explorer | ![Explorer](/dist/images/screenshots/v0.3.0/Explorer.png) |
 | Clipboard | ![Clipboard](/dist/images/screenshots/v0.3.0/Clipboard.png) |
-| Compress | ![Compress1](/dist/images/screenshots/v0.3.0/Compress1.png) <br> ![Compress1](/dist/images/screenshots/v0.3.0/Compress2.png) |
+| Compress | ![Compress](/dist/images/screenshots/v0.3.0/Compress1.png) <br> ![Compress](/dist/images/screenshots/v0.3.0/Compress2.png) |
 | Extract | ![Extract](/dist/images/screenshots/v0.3.0/Extract.png) |
 | Checksum | ![Checksum](/dist/images/screenshots/v0.3.0/Checksum1.png) <br> ![Checksum](/dist/images/screenshots/v0.3.0/Checksum2.png) |
-| Operations History (Status) | ![Power Limit](/dist/images/screenshots/v0.3.0/OpHistory_Status.png) |
-| Log (Status) | ![Power Limit](/dist/images/screenshots/v0.3.0/Log_Status.png) |
+| Operations History (Status) | ![Operations History](/dist/images/screenshots/v0.3.0/OpHistory_Status.png) |
+| Log (Status) | ![Log](/dist/images/screenshots/v0.3.0/Log_Status.png) |
 
 ## Features
 
 - Basic Explorer with basic file operations
+- Archive operations
+   - Browse through archives
+   - Copy/cut from folder to archive, archive to folder, and archive to archive
 - System independent descriptive clipboard
-- Add files to existing archive
 - Compress and Extract 
 - Supports:
    - Multiple archive formats

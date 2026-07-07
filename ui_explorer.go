@@ -22,6 +22,25 @@ import (
 	"github.com/ncruces/zenity"
 )
 
+// TODO: add a help button that displays a modal(dialog) with help info in it. like: an iamge explaining each icon, how to add files to existing archives, how adding files to queue for creating new archives works (it adds the files over existing files ignoring duplicate file paths)
+
+type conflictAction int
+
+const (
+	actionCancel conflictAction = iota
+	actionReplace
+	actionReplaceAll
+	actionRename
+	actionSkip
+	actionSkipAll
+)
+
+type stageItem struct {
+	SrcPath string
+	DstName string
+	IsDir   bool
+}
+
 // fileSystemItem represents a local directory entry or a virtual file inside an archive
 type fileSystemItem struct {
 	Name      string
@@ -59,9 +78,11 @@ type explorerTabState struct {
 
 // clipboardItem handles items stored in our custom application clipboard
 type clipboardItem struct {
-	Path  string
-	IsDir bool
-	Op    string // "cut" or "copy"
+	Path        string // Full disk path or internal virtual relative path
+	IsDir       bool
+	Op          string // "cut" or "copy"
+	IsArchive   bool   // Whether the source item is inside an archive
+	ArchivePath string // Source archive disk path (if IsArchive is true)
 }
 
 // favoriteItem handles the metadata of user-saved directories
@@ -379,7 +400,7 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 				state.selectedItems[item.Name] = checked
 			}
 
-			displayName := truncateDisplayPath(item.Name, 50)
+			displayName := truncateDisplayPath(item.Name, 40)
 			name.SetText(displayName)
 
 			if item.IsDir {
@@ -888,6 +909,53 @@ func getVirtualItems(all []archiveItem, currentRelPath string) []fileSystemItem 
 	return append(dirs, files...)
 }
 
+// extractArchiveItems extracts all archive-based clipboard items to a temporary directory.
+// It returns a mapping of original virtual paths to their temporary local disk paths, the temporary directory path itself, and any error encountered.
+func extractArchiveItems(items []clipboardItem) (map[string]string, string, error) {
+	hasArchiveItems := false
+	for _, item := range items {
+		if item.IsArchive {
+			hasArchiveItems = true
+			break
+		}
+	}
+	if !hasArchiveItems {
+		return nil, "", nil
+	}
+
+	tempDir, err := os.MkdirTemp("", "7gl-extract-*")
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Group items by archive path so we can batch extract with a single 7-Zip process per archive
+	groups := make(map[string][]string)
+	for _, item := range items {
+		if item.IsArchive {
+			groups[item.ArchivePath] = append(groups[item.ArchivePath], item.Path)
+		}
+	}
+
+	for archivePath, paths := range groups {
+		args := []string{"x", archivePath, "-o" + tempDir, "-y"}
+		args = append(args, paths...)
+		cmd := exec.Command(root7zCmd, args...)
+		if err := cmd.Run(); err != nil {
+			os.RemoveAll(tempDir)
+			return nil, "", fmt.Errorf("failed to extract from archive %s: %w", filepath.Base(archivePath), err)
+		}
+	}
+
+	pathMap := make(map[string]string)
+	for _, item := range items {
+		if item.IsArchive {
+			pathMap[item.Path] = filepath.Join(tempDir, filepath.FromSlash(item.Path))
+		}
+	}
+
+	return pathMap, tempDir, nil
+}
+
 func addToClipboard(state *explorerTabState, op string) {
 	clipboardMu.Lock()
 	defer clipboardMu.Unlock()
@@ -917,7 +985,7 @@ func addToClipboard(state *explorerTabState, op string) {
 			// Search if the item path is already present in the clipboard
 			existsIdx := -1
 			for idx, cbItem := range globalClipboard {
-				if cbItem.Path == item.Path {
+				if cbItem.Path == item.Path && cbItem.IsArchive == state.isArchive && cbItem.ArchivePath == state.archivePath {
 					existsIdx = idx
 					break
 				}
@@ -934,9 +1002,11 @@ func addToClipboard(state *explorerTabState, op string) {
 				}
 			} else {
 				globalClipboard = append(globalClipboard, clipboardItem{
-					Path:  item.Path,
-					IsDir: item.IsDir,
-					Op:    op,
+					Path:        item.Path,
+					IsDir:       item.IsDir,
+					Op:          op,
+					IsArchive:   state.isArchive,
+					ArchivePath: state.archivePath,
 				})
 				addedCount++
 			}
@@ -1005,14 +1075,87 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 	} else {
 		go func() {
 			setInfo("Pasting items...")
+
+			// Extract virtual archive items to a temporary location first
+			pathMap, tempDir, err := extractArchiveItems(itemsCopy)
+			if err != nil {
+				fyne.Do(func() {
+					dialog.ShowError(err, w)
+				})
+				return
+			}
+			if tempDir != "" {
+				defer os.RemoveAll(tempDir)
+			}
+
 			var errors []error
+			globalAction := actionCancel
+			hasGlobalAction := false
+			usedNames := make(map[string]bool)
+
 			for _, item := range itemsCopy {
-				dstPath := filepath.Join(state.currentPath, filepath.Base(item.Path))
-				var err error
-				if item.Op == "copy" {
-					err = copyFileOrDir(item.Path, dstPath)
+				srcPath := item.Path
+				if item.IsArchive {
+					srcPath = pathMap[item.Path]
+				}
+
+				baseName := filepath.Base(item.Path)
+				dstPath := filepath.Join(state.currentPath, baseName)
+
+				var action conflictAction
+				_, err := os.Lstat(dstPath)
+				exists := err == nil
+
+				if exists {
+					if hasGlobalAction {
+						action = globalAction
+					} else {
+						action = promptConflict(w, baseName)
+						if action == actionReplaceAll {
+							globalAction = actionReplace
+							hasGlobalAction = true
+							action = actionReplace
+						} else if action == actionSkipAll {
+							globalAction = actionSkip
+							hasGlobalAction = true
+							action = actionSkip
+						} else if action == actionCancel {
+							break
+						}
+					}
 				} else {
-					err = moveFileOrDir(item.Path, dstPath)
+					action = actionReplace
+				}
+
+				if action == actionSkip {
+					continue
+				}
+
+				if action == actionRename {
+					dstPath = getUniqueDstPath(dstPath, usedNames)
+					usedNames[filepath.Base(dstPath)] = true
+				}
+
+				if filepath.Clean(srcPath) == filepath.Clean(dstPath) && action == actionReplace {
+					setInfo(fmt.Sprintf("Cannot replace item with itself. Skipping '%s'.", baseName))
+					continue
+				}
+
+				if item.Op == "copy" {
+					err = copyFileOrDir(srcPath, dstPath)
+				} else {
+					err = copyFileOrDir(srcPath, dstPath)
+					if err == nil {
+						if item.IsArchive {
+							// If it's a "cut" from inside an archive, delete it from the source archive
+							delCmd := exec.Command(root7zCmd, "d", item.ArchivePath, item.Path)
+							if delErr := delCmd.Run(); delErr != nil {
+								errors = append(errors, fmt.Errorf("failed to remove cut item from source archive: %w", delErr))
+							}
+						} else {
+							_ = os.RemoveAll(srcPath)
+						}
+					}
 				}
 				if err != nil {
 					errors = append(errors, err)
@@ -1248,75 +1391,176 @@ func handleContextChecksum(state *explorerTabState, w fyne.Window) {
 }
 
 func addFilesToArchive(archivePath string, relPath string, items []clipboardItem, w fyne.Window, isSolid bool, onSuccess func()) {
-	tempDir, err := os.MkdirTemp("", "7gl-stage-*")
+	allEntries, _, err := parseArchiveEntries(archivePath)
 	if err != nil {
 		dialog.ShowError(err, w)
 		return
 	}
 
-	targetDir := tempDir
-	if relPath != "" {
-		targetDir = filepath.Join(tempDir, relPath)
-		err = os.MkdirAll(targetDir, 0755)
-		if err != nil {
-			os.RemoveAll(tempDir)
-			dialog.ShowError(err, w)
-			return
-		}
+	existingPaths := make(map[string]bool)
+	for _, entry := range allEntries {
+		existingPaths[filepath.Clean(entry.Path)] = true
 	}
 
-	for _, item := range items {
-		destName := filepath.Base(item.Path)
-		destPath := filepath.Join(targetDir, destName)
-		err = os.Symlink(item.Path, destPath)
+	go func() {
+		// Extract virtual source archive items first
+		pathMap, extractDir, err := extractArchiveItems(items)
 		if err != nil {
-			err = copyFileOrDir(item.Path, destPath)
+			fyne.Do(func() { dialog.ShowError(err, w) })
+			return
+		}
+
+		var itemsToStage []stageItem
+		globalAction := actionCancel
+		hasGlobalAction := false
+
+		for _, item := range items {
+			srcPath := item.Path
+			if item.IsArchive {
+				srcPath = pathMap[item.Path]
+			}
+
+			baseName := filepath.Base(item.Path)
+			archiveDstRelPath := filepath.Join(relPath, baseName)
+			archiveDstClean := filepath.Clean(archiveDstRelPath)
+
+			var action conflictAction
+			if existingPaths[archiveDstClean] {
+				if hasGlobalAction {
+					action = globalAction
+				} else {
+					action = promptConflict(w, baseName)
+					if action == actionReplaceAll {
+						globalAction = actionReplace
+						hasGlobalAction = true
+						action = actionReplace
+					} else if action == actionSkipAll {
+						globalAction = actionSkip
+						hasGlobalAction = true
+						action = actionSkip
+					} else if action == actionCancel {
+						if extractDir != "" {
+							os.RemoveAll(extractDir)
+						}
+						return
+					}
+				}
+			} else {
+				action = actionReplace
+			}
+
+			if action == actionSkip {
+				continue
+			}
+
+			dstName := baseName
+			if action == actionRename {
+				dstName = getUniqueArchiveDstPath(baseName, relPath, existingPaths)
+				existingPaths[filepath.Clean(filepath.Join(relPath, dstName))] = true
+			}
+
+			itemsToStage = append(itemsToStage, stageItem{
+				SrcPath: srcPath,
+				DstName: dstName,
+				IsDir:   item.IsDir,
+			})
+		}
+
+		if len(itemsToStage) == 0 {
+			if extractDir != "" {
+				os.RemoveAll(extractDir)
+			}
+			return
+		}
+
+		tempDir, err := os.MkdirTemp("", "7gl-stage-*")
+		if err != nil {
+			if extractDir != "" {
+				os.RemoveAll(extractDir)
+			}
+			fyne.Do(func() { dialog.ShowError(err, w) })
+			return
+		}
+
+		targetDir := tempDir
+		if relPath != "" {
+			targetDir = filepath.Join(tempDir, relPath)
+			err = os.MkdirAll(targetDir, 0755)
 			if err != nil {
 				os.RemoveAll(tempDir)
-				dialog.ShowError(err, w)
+				if extractDir != "" {
+					os.RemoveAll(extractDir)
+				}
+				fyne.Do(func() { dialog.ShowError(err, w) })
 				return
 			}
 		}
-	}
 
-	var args []string
-	if relPath != "" {
-		parts := strings.Split(relPath, "/")
-		topFolder := parts[0]
-		args = []string{"a", archivePath, topFolder}
-	} else {
-		args = []string{"a", archivePath}
-		for _, item := range items {
-			args = append(args, filepath.Base(item.Path))
-		}
-	}
-
-	cleanupAndRun := func() {
-		tabs.Select(StatusTabRank)
-		startOperation(args, "Adding to Archive", tempDir, w, func() {
-			os.RemoveAll(tempDir)
-			if onSuccess != nil {
-				onSuccess()
-			}
-		})
-	}
-
-	if isSolid {
-		dialog.ShowConfirm(
-			"Modify Solid Archive?",
-			"Modifying a solid archive: this operation may take longer as 7-Zip must decompress and re-compress solid blocks. Proceed?",
-			func(confirmed bool) {
-				if confirmed {
-					cleanupAndRun()
-				} else {
+		for _, item := range itemsToStage {
+			destPath := filepath.Join(targetDir, item.DstName)
+			err = os.Symlink(item.SrcPath, destPath)
+			if err != nil {
+				err = copyFileOrDir(item.SrcPath, destPath)
+				if err != nil {
 					os.RemoveAll(tempDir)
+					if extractDir != "" {
+						os.RemoveAll(extractDir)
+					}
+					fyne.Do(func() { dialog.ShowError(err, w) })
+					return
 				}
-			},
-			w,
-		)
-	} else {
-		cleanupAndRun()
-	}
+			}
+		}
+
+		var args []string
+		if relPath != "" {
+			parts := strings.Split(relPath, "/")
+			topFolder := parts[0]
+			args = []string{"a", archivePath, topFolder}
+		} else {
+			args = []string{"a", archivePath}
+			for _, item := range itemsToStage {
+				args = append(args, item.DstName)
+			}
+		}
+
+		cleanupAndRun := func() {
+			fyne.Do(func() {
+				tabs.Select(StatusTabRank)
+				startOperation(args, "Adding to Archive", tempDir, w, func() {
+					os.RemoveAll(tempDir)
+					if extractDir != "" {
+						os.RemoveAll(extractDir)
+					}
+					if onSuccess != nil {
+						onSuccess()
+					}
+				})
+			})
+		}
+
+		if isSolid {
+			fyne.Do(func() {
+				dialog.ShowConfirm(
+					"Modify Solid Archive?",
+					"Modifying a solid archive: this operation may take longer as 7-Zip must decompress and re-compress solid blocks. Proceed?",
+					func(confirmed bool) {
+						if confirmed {
+							go cleanupAndRun()
+						} else {
+							os.RemoveAll(tempDir)
+							if extractDir != "" {
+								os.RemoveAll(extractDir)
+							}
+						}
+					},
+					w,
+				)
+			})
+		} else {
+			cleanupAndRun()
+		}
+	}()
 }
 
 func deleteFromArchive(archivePath string, relPaths []string, w fyne.Window, onSuccess func()) {
@@ -1389,6 +1633,7 @@ func copyDir(src, dst string) error {
 	return nil
 }
 
+/*
 func moveFileOrDir(src, dst string) error {
 	err := os.Rename(src, dst)
 	if err == nil {
@@ -1400,6 +1645,7 @@ func moveFileOrDir(src, dst string) error {
 	}
 	return os.RemoveAll(src)
 }
+	*/
 
 func showClipboardDialog(w fyne.Window) {
 	clipboardMu.Lock()
@@ -1460,7 +1706,11 @@ func showClipboardDialog(w fyne.Window) {
 				typeLbl.SetText("[File]")
 			}
 
-			pathLbl.SetText(truncateDisplayPath(item.Path, 50))
+			if item.IsArchive {
+				pathLbl.SetText(fmt.Sprintf("%s :: %s", filepath.Base(item.ArchivePath), truncateDisplayPath(item.Path, 40)))
+			} else {
+				pathLbl.SetText(truncateDisplayPath(item.Path, 50))
+			}
 
 			delBtn.OnTapped = func() {
 				clipboardMu.Lock()
@@ -1515,6 +1765,90 @@ func formatSize(b int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
+func promptConflict(w fyne.Window, filename string) conflictAction {
+	ch := make(chan conflictAction)
+	fyne.Do(func() {
+		var d dialog.Dialog
+		replaceBtn := widget.NewButton("Replace", func() {
+			ch <- actionReplace
+			d.Hide()
+		})
+		replaceAllBtn := widget.NewButton("Replace All", func() {
+			ch <- actionReplaceAll
+			d.Hide()
+		})
+		renameBtn := widget.NewButton("Rename (Auto)", func() {
+			ch <- actionRename
+			d.Hide()
+		})
+		skipBtn := widget.NewButton("Skip", func() {
+			ch <- actionSkip
+			d.Hide()
+		})
+		skipAllBtn := widget.NewButton("Skip All", func() {
+			ch <- actionSkipAll
+			d.Hide()
+		})
+
+		content := container.NewVBox(
+			widget.NewLabel(fmt.Sprintf("An item named '%s' already exists at the destination.", filename)),
+			widget.NewLabel("What would you like to do?"),
+			widget.NewSeparator(),
+			container.NewGridWithColumns(3, replaceBtn, replaceAllBtn, renameBtn),
+			container.NewGridWithColumns(2, skipBtn, skipAllBtn),
+		)
+
+		d = dialog.NewCustom("File Conflict", "Cancel", content, w)
+		d.SetOnClosed(func() {
+			select {
+			case ch <- actionCancel:
+			default:
+			}
+		})
+		d.Show()
+	})
+	return <-ch
+}
+
+func getUniqueDstPath(path string, usedNames map[string]bool) string {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+
+	counter := 1
+	newPath := path
+	for {
+		_, err := os.Lstat(newPath)
+		isNotExist := os.IsNotExist(err)
+		baseNew := filepath.Base(newPath)
+
+		if isNotExist && !usedNames[baseNew] {
+			break
+		}
+		newPath = filepath.Join(dir, fmt.Sprintf("%s_copy%d%s", name, counter, ext))
+		counter++
+	}
+	return newPath
+}
+
+func getUniqueArchiveDstPath(baseName string, relPath string, existingPaths map[string]bool) string {
+	ext := filepath.Ext(baseName)
+	name := strings.TrimSuffix(baseName, ext)
+
+	counter := 1
+	newName := baseName
+	for {
+		archivePath := filepath.Clean(filepath.Join(relPath, newName))
+		if !existingPaths[archivePath] {
+			break
+		}
+		newName = fmt.Sprintf("%s_copy%d%s", name, counter, ext)
+		counter++
+	}
+	return newName
+}
+
 func removeFromClipboard(deletedPaths []string, isArchive bool) {
 	clipboardMu.Lock()
 	defer clipboardMu.Unlock()
@@ -1524,6 +1858,9 @@ func removeFromClipboard(deletedPaths []string, isArchive bool) {
 		keep := true
 		for _, delPath := range deletedPaths {
 			if !isArchive {
+				if cbItem.IsArchive {
+					continue
+				}
 				cbClean := filepath.Clean(cbItem.Path)
 				delClean := filepath.Clean(delPath)
 				if cbClean == delClean || strings.HasPrefix(cbClean, delClean+string(filepath.Separator)) {
@@ -1531,6 +1868,9 @@ func removeFromClipboard(deletedPaths []string, isArchive bool) {
 					break
 				}
 			} else {
+				if !cbItem.IsArchive {
+					continue
+				}
 				cbClean := filepath.ToSlash(filepath.Clean(cbItem.Path))
 				delClean := filepath.ToSlash(filepath.Clean(delPath))
 				if cbClean == delClean || strings.HasPrefix(cbClean, delClean+"/") {
