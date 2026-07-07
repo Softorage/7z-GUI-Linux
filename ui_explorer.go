@@ -31,6 +31,7 @@ const (
 	actionReplace
 	actionReplaceAll
 	actionRename
+	actionRenameAll
 	actionSkip
 	actionSkipAll
 )
@@ -1036,6 +1037,50 @@ func addToClipboard(state *explorerTabState, op string) {
 	state.fileList.Refresh()
 }
 
+type typeConflictInfo struct {
+	Name       string
+	SrcPath    string
+	DstPath    string
+	Resolution string
+}
+
+type pasteContext struct {
+	window          fyne.Window
+	hasGlobalAction bool
+	globalAction    conflictAction
+	usedNames       map[string]bool
+	cancelled       bool
+	typeConflicts   []typeConflictInfo
+	typeConflictsMu sync.Mutex
+}
+
+func resolveConflict(ctx *pasteContext, filename string) conflictAction {
+	if ctx.cancelled {
+		return actionCancel
+	}
+	if ctx.hasGlobalAction {
+		return ctx.globalAction
+	}
+
+	action := promptConflict(ctx.window, filename)
+	if action == actionCancel {
+		ctx.cancelled = true
+	} else if action == actionReplaceAll {
+		ctx.globalAction = actionReplace
+		ctx.hasGlobalAction = true
+		return actionReplace
+	} else if action == actionSkipAll {
+		ctx.globalAction = actionSkip
+		ctx.hasGlobalAction = true
+		return actionSkip
+	} else if action == actionRenameAll {
+		ctx.globalAction = actionRename
+		ctx.hasGlobalAction = true
+		return actionRename
+	}
+	return action
+}
+
 func handlePaste(state *explorerTabState, w fyne.Window) {
 	clipboardMu.Lock()
 	if len(globalClipboard) == 0 {
@@ -1089,11 +1134,16 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 			}
 
 			var errors []error
-			globalAction := actionCancel
-			hasGlobalAction := false
-			usedNames := make(map[string]bool)
+			ctx := &pasteContext{
+				window:    w,
+				usedNames: make(map[string]bool),
+			}
 
 			for _, item := range itemsCopy {
+				if ctx.cancelled {
+					break
+				}
+
 				srcPath := item.Path
 				if item.IsArchive {
 					srcPath = pathMap[item.Path]
@@ -1102,69 +1152,34 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 				baseName := filepath.Base(item.Path)
 				dstPath := filepath.Join(state.currentPath, baseName)
 
-				var action conflictAction
-				_, err := os.Lstat(dstPath)
-				exists := err == nil
-
-				if exists {
-					if hasGlobalAction {
-						action = globalAction
-					} else {
-						action = promptConflict(w, baseName)
-						if action == actionReplaceAll {
-							globalAction = actionReplace
-							hasGlobalAction = true
-							action = actionReplace
-						} else if action == actionSkipAll {
-							globalAction = actionSkip
-							hasGlobalAction = true
-							action = actionSkip
-						} else if action == actionCancel {
-							break
-						}
-					}
-				} else {
-					action = actionReplace
-				}
-
-				if action == actionSkip {
-					continue
-				}
-
-				if action == actionRename {
-					dstPath = getUniqueDstPath(dstPath, usedNames)
-					usedNames[filepath.Base(dstPath)] = true
-				}
-
-				if filepath.Clean(srcPath) == filepath.Clean(dstPath) && action == actionReplace {
-					setInfo(fmt.Sprintf("Cannot replace item with itself. Skipping '%s'.", baseName))
-					continue
-				}
-
-				if item.Op == "copy" {
-					err = copyFileOrDir(srcPath, dstPath)
-				} else {
-					err = copyFileOrDir(srcPath, dstPath)
-					if err == nil {
-						if item.IsArchive {
-							// If it's a "cut" from inside an archive, delete it from the source archive
-							delCmd := exec.Command(root7zCmd, "d", item.ArchivePath, item.Path)
-							if delErr := delCmd.Run(); delErr != nil {
-								errors = append(errors, fmt.Errorf("failed to remove cut item from source archive: %w", delErr))
-							}
-						} else {
-							_ = os.RemoveAll(srcPath)
-						}
-					}
-				}
+				err = copyFileOrDir(ctx, srcPath, dstPath)
 				if err != nil {
+					if err.Error() == "cancelled by user" {
+						setInfo("Paste operation cancelled by user.")
+						break
+					}
 					errors = append(errors, err)
+					continue
+				}
+
+				if item.Op == "cut" {
+					if item.IsArchive {
+						// If it's a "cut" from inside an archive, delete it from the source archive
+						delCmd := exec.Command(root7zCmd, "d", item.ArchivePath, item.Path)
+						if delErr := delCmd.Run(); delErr != nil {
+							errors = append(errors, fmt.Errorf("failed to remove cut item from source archive: %w", delErr))
+						}
+					} else {
+						_ = os.RemoveAll(srcPath)
+					}
 				}
 			}
 
 			fyne.Do(func() {
 				if len(errors) > 0 {
 					dialog.ShowError(fmt.Errorf("completed with errors: %v", errors), w)
+				} else if ctx.cancelled {
+					setInfo("Paste operation stopped.")
 				} else {
 					setInfo("Paste completed successfully.")
 					if clipboardClearOnSuccess {
@@ -1173,6 +1188,21 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 						clipboardMu.Unlock()
 					}
 				}
+
+				// Inform the user if any type conflicts were handled during the run
+				if len(ctx.typeConflicts) > 0 {
+					var sb strings.Builder
+					for _, conflict := range ctx.typeConflicts {
+						sb.WriteString(fmt.Sprintf("Name: %s, Src: %s, Dst: %s, Resolution: %v\n",
+							conflict.Name,
+							conflict.SrcPath,
+							conflict.DstPath,
+							conflict.Resolution,
+						))
+					}
+					setInfo("Type Conflict: \n" + sb.String()) // TODO: simply log instead of setInfo feedback
+				}
+
 				state.refresh(w)
 			})
 		}()
@@ -1500,7 +1530,8 @@ func addFilesToArchive(archivePath string, relPath string, items []clipboardItem
 			destPath := filepath.Join(targetDir, item.DstName)
 			err = os.Symlink(item.SrcPath, destPath)
 			if err != nil {
-				err = copyFileOrDir(item.SrcPath, destPath)
+				// Stage to target without conflict prompts (pass nil pasteContext)
+				err = copyFileOrDir(nil, item.SrcPath, destPath)
 				if err != nil {
 					os.RemoveAll(tempDir)
 					if extractDir != "" {
@@ -1570,10 +1601,78 @@ func deleteFromArchive(archivePath string, relPaths []string, w fyne.Window, onS
 	startOperation(args, "Deleting from Archive", "", w, onSuccess)
 }
 
-func copyFileOrDir(src, dst string) error {
+func copyFileOrDir(ctx *pasteContext, src, dst string) error {
 	info, err := os.Lstat(src) // Read entry metadata without resolving symlinks
 	if err != nil {
 		return err
+	}
+
+	dstInfo, err := os.Lstat(dst)
+	dstExists := err == nil
+
+	if dstExists && ctx != nil {
+		isTypeConflict := info.IsDir() != dstInfo.IsDir()
+		var action conflictAction
+
+		if isTypeConflict {
+			// Safe global actions (Rename All or Skip All) require no user interaction and can be automatically applied.
+			// Destructive global actions (Replace All) must be ignored, forcing the explicit warnings in promptTypeConflict.
+			if ctx.hasGlobalAction && (ctx.globalAction == actionRename || ctx.globalAction == actionSkip) {
+				action = ctx.globalAction
+			} else {
+				action = promptTypeConflict(ctx.window, filepath.Base(dst), info.IsDir(), dstInfo.IsDir())
+				if action == actionRenameAll {
+					ctx.globalAction = actionRename
+					ctx.hasGlobalAction = true
+					action = actionRename
+				} else if action == actionSkipAll {
+					ctx.globalAction = actionSkip
+					ctx.hasGlobalAction = true
+					action = actionSkip
+				}
+			}
+
+			// Log how this type mismatch was handled
+			resolution := "Cancelled"
+			switch action {
+			case actionSkip:
+				resolution = "Skipped"
+			case actionRename:
+				tempDst := getUniqueDstPath(dst, ctx.usedNames)
+				resolution = fmt.Sprintf("Renamed to '%s'", filepath.Base(tempDst))
+			case actionReplace:
+				resolution = "Replaced (Existing directory/file deleted)"
+			}
+
+			ctx.typeConflictsMu.Lock()
+			ctx.typeConflicts = append(ctx.typeConflicts, typeConflictInfo{
+				Name:       filepath.Base(dst),
+				SrcPath:    src,
+				DstPath:    dst,
+				Resolution: resolution,
+			})
+			ctx.typeConflictsMu.Unlock()
+		} else {
+			action = resolveConflict(ctx, filepath.Base(dst))
+		}
+
+		if action == actionSkip {
+			return nil
+		}
+		if action == actionCancel {
+			return fmt.Errorf("cancelled by user")
+		}
+		if action == actionRename {
+			dst = getUniqueDstPath(dst, ctx.usedNames)
+			ctx.usedNames[filepath.Base(dst)] = true
+			dstExists = false
+		} else if action == actionReplace {
+			if isTypeConflict {
+				// Permanently delete the conflicting mismatched path
+				_ = os.RemoveAll(dst)
+				dstExists = false
+			}
+		}
 	}
 	// Check for symlink
 	if info.Mode()&os.ModeSymlink != 0 {
@@ -1582,12 +1681,16 @@ func copyFileOrDir(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		_ = os.Remove(dst) // Remove any pre-existing file/link at destination
+		if dstExists {
+			_ = os.Remove(dst) // Remove any pre-existing file/link at destination
+		}
 		return os.Symlink(target, dst)
 	}
+
 	if info.IsDir() {
-		return copyDir(src, dst)
+		return copyDir(ctx, src, dst)
 	}
+
 	return copyFile(src, dst)
 }
 
@@ -1608,7 +1711,7 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-func copyDir(src, dst string) error {
+func copyDir(ctx *pasteContext, src, dst string) error {
 	info, err := os.Lstat(src) // Read directory metadata safely
 	if err != nil {
 		return err
@@ -1624,28 +1727,18 @@ func copyDir(src, dst string) error {
 	}
 
 	for _, entry := range entries {
+		if ctx != nil && ctx.cancelled {
+			return fmt.Errorf("cancelled by user")
+		}
+
 		s := filepath.Join(src, entry.Name())
 		d := filepath.Join(dst, entry.Name())
-		if err := copyFileOrDir(s, d); err != nil {
+		if err := copyFileOrDir(ctx, s, d); err != nil {
 			return err
 		}
 	}
 	return nil
 }
-
-/*
-func moveFileOrDir(src, dst string) error {
-	err := os.Rename(src, dst)
-	if err == nil {
-		return nil
-	}
-	err = copyFileOrDir(src, dst)
-	if err != nil {
-		return err
-	}
-	return os.RemoveAll(src)
-}
-	*/
 
 func showClipboardDialog(w fyne.Window) {
 	clipboardMu.Lock()
@@ -1781,6 +1874,10 @@ func promptConflict(w fyne.Window, filename string) conflictAction {
 			ch <- actionRename
 			d.Hide()
 		})
+		renameAllBtn := widget.NewButton("Rename All (Auto)", func() {
+			ch <- actionRenameAll
+			d.Hide()
+		})
 		skipBtn := widget.NewButton("Skip", func() {
 			ch <- actionSkip
 			d.Hide()
@@ -1794,11 +1891,78 @@ func promptConflict(w fyne.Window, filename string) conflictAction {
 			widget.NewLabel(fmt.Sprintf("An item named '%s' already exists at the destination.", filename)),
 			widget.NewLabel("What would you like to do?"),
 			widget.NewSeparator(),
-			container.NewGridWithColumns(3, replaceBtn, replaceAllBtn, renameBtn),
-			container.NewGridWithColumns(2, skipBtn, skipAllBtn),
+			container.NewGridWithColumns(3,
+				replaceBtn, renameBtn, skipBtn,
+				replaceAllBtn, renameAllBtn, skipAllBtn,
+			),
 		)
 
 		d = dialog.NewCustom("File Conflict", "Cancel", content, w)
+		d.SetOnClosed(func() {
+			select {
+			case ch <- actionCancel:
+			default:
+			}
+		})
+		d.Show()
+	})
+	return <-ch
+}
+
+func promptTypeConflict(w fyne.Window, filename string, srcIsDir, dstIsDir bool) conflictAction {
+	ch := make(chan conflictAction)
+	fyne.Do(func() {
+		var d dialog.Dialog
+
+		srcType := "a file"
+		if srcIsDir {
+			srcType = "a directory"
+		}
+		dstType := "a file"
+		if dstIsDir {
+			dstType = "a directory"
+		}
+
+		replaceBtn := widget.NewButton("Replace (Delete Existing)", func() {
+			ch <- actionReplace
+			d.Hide()
+		})
+		replaceBtn.Importance = widget.DangerImportance
+
+		renameBtn := widget.NewButton("Rename (Auto)", func() {
+			ch <- actionRename
+			d.Hide()
+		})
+
+		renameAllBtn := widget.NewButton("Rename All (Auto)", func() {
+			ch <- actionRenameAll
+			d.Hide()
+		})
+
+		skipBtn := widget.NewButton("Skip", func() {
+			ch <- actionSkip
+			d.Hide()
+		})
+
+		skipAllBtn := widget.NewButton("Skip All", func() {
+			ch <- actionSkipAll
+			d.Hide()
+		})
+
+		content := container.NewVBox(
+			widget.NewLabelWithStyle("WARNING: Type Mismatch Conflict!", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+			widget.NewSeparator(),
+			widget.NewLabel(fmt.Sprintf("You are trying to copy %s '%s'.", srcType, filename)),
+			widget.NewLabel(fmt.Sprintf("But %s already exists with that name at the destination.", dstType)),
+			widget.NewLabel("Replacing it will permanently and recursively DELETE the existing item and all of its contents!"),
+			widget.NewSeparator(),
+			container.NewGridWithColumns(3,
+				replaceBtn, renameBtn, skipBtn,
+				layout.NewSpacer(), renameAllBtn, skipAllBtn,
+			),
+		)
+
+		d = dialog.NewCustom("Destructive Type Conflict", "Cancel", content, w)
 		d.SetOnClosed(func() {
 			select {
 			case ch <- actionCancel:
