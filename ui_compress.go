@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -20,6 +21,35 @@ import (
 // Any UI manipulation (like .SetText(), .SetValue(), .Refresh()) that is triggered inside a background goroutine (go func()) or a background timer (time.AfterFunc) must be wrapped in fyne.Do
 
 var compressSrcEntry *widget.Entry
+
+// hasDuplicateFilenames checks if there are files in the sources list that share the same base name
+// but originate from different paths, which causes 7-Zip to fail with "Duplicate filename on disk".
+func hasDuplicateFilenames(sources []string) bool {
+	seen := make(map[string]string)
+	for _, src := range sources {
+		absPath, err := filepath.Abs(src)
+		if err != nil {
+			absPath = src
+		}
+
+		fi, err := os.Stat(absPath)
+		if err != nil {
+			continue
+		}
+
+		if fi.IsDir() {
+			continue // 7-Zip naturally preserves directory hierarchies, so conflicts won't occur at the root.
+		}
+
+		base := filepath.Base(absPath)
+		if existing, found := seen[base]; found && existing != absPath {
+			return true
+		}
+		seen[base] = absPath
+	}
+	return false
+}
+
 
 func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	var selectedSources []string
@@ -67,6 +97,9 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		destPath := getArchiveDestination(selectedSources, format, customName, sfx)
 		archivePreviewLabel.SetText(destPath)
 
+		if hasDuplicateFilenames(selectedSources) {
+			setInfo("Notice: Duplicate filenames detected. Full relative paths will be preserved (-spf2) to prevent conflicts.")
+		}
 	}
 
 	// Declare list variable beforehand so its functions can reference it
@@ -579,6 +612,11 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			passEntry.Text,
 			encNameCheck.Checked,
 		)
+
+		// Safe fallback: append -spf2 if duplicate names exist across different directories
+		if hasDuplicateFilenames(selectedSources) {
+			args = append(args, "-spf2")
+		}
 
 		// Switch to Status tab
 		tabs.Select(StatusTabRank)
