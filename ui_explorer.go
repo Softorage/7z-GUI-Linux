@@ -66,6 +66,7 @@ type explorerTabState struct {
 	isArchive      bool
 	archivePath    string
 	archiveRelPath string
+	archivePassword string
 	archiveItems   []archiveItem
 	items          []fileSystemItem
 	selectedItems  map[string]bool
@@ -84,6 +85,7 @@ type clipboardItem struct {
 	Op          string // "cut" or "copy"
 	IsArchive   bool   // Whether the source item is inside an archive
 	ArchivePath string // Source archive disk path (if IsArchive is true)
+	Password    string // Archive password (if IsArchive is true and encrypted)
 }
 
 // favoriteItem handles the metadata of user-saved directories
@@ -448,10 +450,31 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 				state.refresh(w)
 			} else {
 				if isArchiveExtension(item.Name) {
-					state.isArchive = true
-					state.archivePath = item.Path
-					state.archiveRelPath = ""
-					state.refresh(w)
+					targetPath := item.Path
+					go func() {
+						protected := isPasswordProtected(targetPath)
+						if protected {
+							fyne.Do(func() {
+								promptArchivePassword(w, targetPath, func(pwd string) {
+									state.isArchive = true
+									state.archivePath = targetPath
+									state.archiveRelPath = ""
+									state.archivePassword = pwd
+									state.refresh(w)
+								}, func() {
+									setInfo("Opening password-protected archive cancelled.")
+								})
+							})
+						} else {
+							fyne.Do(func() {
+								state.isArchive = true
+								state.archivePath = targetPath
+								state.archiveRelPath = ""
+								state.archivePassword = ""
+								state.refresh(w)
+							})
+						}
+					}()
 				}
 			}
 		}
@@ -570,7 +593,7 @@ func (state *explorerTabState) refresh(w fyne.Window) {
 		state.pathEntry.SetText(state.archivePath + " :: " + rel)
 
 		go func() {
-			all, _, err := parseArchiveEntries(state.archivePath)
+			all, _, err := parseArchiveEntries(state.archivePath, state.archivePassword)
 			if err != nil {
 				fyne.Do(func() {
 					dialog.ShowError(fmt.Errorf("failed to list archive contents: %v", err), w)
@@ -734,8 +757,12 @@ func getLocalItems(dirPath string, showHidden bool) ([]fileSystemItem, error) {
 	return append(dirs, files...), nil
 }
 
-func parseArchiveEntries(archivePath string) ([]archiveItem, bool, error) {
-	cmd := exec.Command(root7zCmd, "l", "-slt", archivePath)
+func parseArchiveEntries(archivePath string, password string) ([]archiveItem, bool, error) {
+	args := []string{"l", "-slt", archivePath}
+	if password != "" {
+		args = append(args, "-p"+password)
+	}
+	cmd := exec.Command(root7zCmd, args...)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, false, err
@@ -929,16 +956,23 @@ func extractArchiveItems(items []clipboardItem) (map[string]string, string, erro
 		return nil, "", err
 	}
 
-	// Group items by archive path so we can batch extract with a single 7-Zip process per archive
+	// Group items by archive path and record passwords so we can batch extract with a single 7-Zip process per archive
+	passwords := make(map[string]string)
 	groups := make(map[string][]string)
 	for _, item := range items {
 		if item.IsArchive {
 			groups[item.ArchivePath] = append(groups[item.ArchivePath], item.Path)
+			if item.Password != "" {
+				passwords[item.ArchivePath] = item.Password
+			}
 		}
 	}
 
 	for archivePath, paths := range groups {
 		args := []string{"x", archivePath, "-o" + tempDir, "-y"}
+		if pwd, ok := passwords[archivePath]; ok && pwd != "" {
+			args = append(args, "-p"+pwd)
+		}
 		args = append(args, paths...)
 		cmd := exec.Command(root7zCmd, args...)
 		if err := cmd.Run(); err != nil {
@@ -1008,6 +1042,7 @@ func addToClipboard(state *explorerTabState, op string) {
 					Op:          op,
 					IsArchive:   state.isArchive,
 					ArchivePath: state.archivePath,
+					Password:    state.archivePassword,
 				})
 				addedCount++
 			}
@@ -1098,7 +1133,7 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 			return
 		}
 
-		_, isSolid, err := parseArchiveEntries(state.archivePath)
+		_, isSolid, err := parseArchiveEntries(state.archivePath, state.archivePassword)
 		if err != nil {
 			dialog.ShowError(err, w)
 			return
@@ -1116,7 +1151,7 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 			})
 		}
 
-		addFilesToArchive(state.archivePath, state.archiveRelPath, itemsCopy, w, isSolid, onSuccess)
+		addFilesToArchive(state.archivePath, state.archiveRelPath, state.archivePassword, itemsCopy, w, isSolid, onSuccess)
 	} else {
 		go func() {
 			setInfo("Pasting items...")
@@ -1250,7 +1285,7 @@ func handleDelete(state *explorerTabState, w fyne.Window) {
 			for _, t := range targets {
 				relPaths = append(relPaths, filepath.Join(state.archiveRelPath, t))
 			}
-			deleteFromArchive(state.archivePath, relPaths, w, onSuccess)
+			deleteFromArchive(state.archivePath, relPaths, state.archivePassword, w, onSuccess)
 		} else {
 			go func() {
 				setInfo("Deleting items...")
@@ -1329,10 +1364,12 @@ func handleContextExtract(state *explorerTabState, w fyne.Window) {
 			}
 
 			args := []string{"x", state.archivePath, "-o" + folder, "-bsp1", "-y"}
+			if state.archivePassword != "" {
+				args = append(args, "-p"+state.archivePassword)
+			}
 			args = append(args, targets...)
 
 			fyne.Do(func() {
-				tabs.Select(StatusTabRank)
 				startOperation(args, "Extracting", "", w, func() {
 					setInfo("Selected items extracted successfully.")
 				})
@@ -1420,8 +1457,8 @@ func handleContextChecksum(state *explorerTabState, w fyne.Window) {
 	setInfo("Selected file loaded into Checksum panel.")
 }
 
-func addFilesToArchive(archivePath string, relPath string, items []clipboardItem, w fyne.Window, isSolid bool, onSuccess func()) {
-	allEntries, _, err := parseArchiveEntries(archivePath)
+func addFilesToArchive(archivePath string, relPath string, password string, items []clipboardItem, w fyne.Window, isSolid bool, onSuccess func()) {
+	allEntries, _, err := parseArchiveEntries(archivePath, password)
 	if err != nil {
 		dialog.ShowError(err, w)
 		return
@@ -1554,10 +1591,12 @@ func addFilesToArchive(archivePath string, relPath string, items []clipboardItem
 				args = append(args, item.DstName)
 			}
 		}
+		if password != "" {
+			args = append(args, "-p"+password)
+		}
 
 		cleanupAndRun := func() {
 			fyne.Do(func() {
-				tabs.Select(StatusTabRank)
 				startOperation(args, "Adding to Archive", tempDir, w, func() {
 					os.RemoveAll(tempDir)
 					if extractDir != "" {
@@ -1594,10 +1633,12 @@ func addFilesToArchive(archivePath string, relPath string, items []clipboardItem
 	}()
 }
 
-func deleteFromArchive(archivePath string, relPaths []string, w fyne.Window, onSuccess func()) {
+func deleteFromArchive(archivePath string, relPaths []string, password string, w fyne.Window, onSuccess func()) {
 	args := []string{"d", archivePath}
 	args = append(args, relPaths...)
-	tabs.Select(StatusTabRank)
+	if password != "" {
+		args = append(args, "-p"+password)
+	}
 	startOperation(args, "Deleting from Archive", "", w, onSuccess)
 }
 
@@ -2048,4 +2089,24 @@ func removeFromClipboard(deletedPaths []string, isArchive bool) {
 		}
 	}
 	globalClipboard = newClipboard
+}
+
+func promptArchivePassword(w fyne.Window, archivePath string, onSuccess func(string), onCancel func()) {
+	pwdEntry := widget.NewPasswordEntry()
+	pwdEntry.PlaceHolder = "Enter Password"
+	items := []*widget.FormItem{
+		widget.NewFormItem("Password:", pwdEntry),
+	}
+	d := dialog.NewForm("Password Required for "+filepath.Base(archivePath), "Open", "Cancel", items, func(submit bool) {
+		if submit {
+			onSuccess(pwdEntry.Text)
+		} else {
+			if onCancel != nil {
+				onCancel()
+			}
+		}
+	}, w)
+	windowSize := w.Canvas().Size()
+	d.Resize(fyne.NewSize(windowSize.Width*0.8, d.MinSize().Height))
+	d.Show()
 }
