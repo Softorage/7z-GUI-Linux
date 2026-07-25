@@ -61,86 +61,21 @@ jobs:
 
     - name: Cross-Compile, Optimize, and Compress
       env:
-        URL_386: "https://github.com/ip7z/7zip/releases/download/26.01/7z2601-linux-x86.tar.xz"
-        URL_AMD64: "https://github.com/ip7z/7zip/releases/download/26.01/7z2601-linux-x64.tar.xz"
-        URL_ARM64: "https://github.com/ip7z/7zip/releases/download/26.01/7z2601-linux-arm64.tar.xz"
+        URL_386: "https://github.com/ip7z/7zip/releases/download/26.02/7z2602-linux-x86.tar.xz"
+        URL_AMD64: "https://github.com/ip7z/7zip/releases/download/26.02/7z2602-linux-x64.tar.xz"
+        URL_ARM64: "https://github.com/ip7z/7zip/releases/download/26.02/7z2602-linux-arm64.tar.xz"
       run: |
         mkdir -p ./public
 
         NAME="7z-GUI-Linux"
         
         archs=("amd64" "386" "arm64")
+        servers=("x11" "wayland")
 
         for arch in "${archs[@]}"; do
-          echo "Building for Linux ${arch}"
-          
-          # Setup Staging Areas
-          STAGING_DIR="./staging"
-          STAGING_DEBUG_DIR="./debug-staging"
-          rm -rf "${STAGING_DIR}" "${STAGING_DEBUG_DIR}"
-          mkdir -p "${STAGING_DIR}" "${STAGING_DEBUG_DIR}"
-
-          echo "------------ fyne-cross working... ------------"
-          echo "------------   RELEASE BUILD...    ------------"
-          # we have removed -s and -w from ldflags for now as fyne-cross has issues passing ldflags to Go
-          # -release flag doesn't work. https://github.com/fyne-io/fyne-cross/issues/272
-          fyne-cross linux \
-            --arch ${arch} \
-            --env GOTOOLCHAIN=auto \
-            --tags "no_emoji,no_animations,no_metadata" \
-            --icon "assets/logo.png" \
-            --name "${NAME}"
-
-          echo "--- Directory structure for fyne-cross: ---"
-          ls -R fyne-cross
-          echo "--- End of directory structure ---"
-
-          # fyne-cross names the binary after name of the folder in which main package is
-          RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/7z-gui-linux"
-          
-          echo "Checking if release binary exists before proceeding"
-          if [ ! -f "${RAW_BINARY_OUTPUT}" ]; then
-            echo "Error: Release binary for ${arch} not found at ${RAW_BINARY_OUTPUT}"
-            exit 1
-          fi
-          
-          # Move release binary to staging
-          mv "${RAW_BINARY_OUTPUT}" "${STAGING_DIR}/${NAME}"
-          echo "Done: Release binary moved to staging."
-
-          #echo "------------   DEBUG build...    ------------"
-          #fyne-cross linux \
-          #  --arch ${arch} \
-          #  --env GOTOOLCHAIN=auto \
-          #  --icon "assets/logo.png" \
-          #  --ldflags="-X=main.version=${{ env.GIT_TAG }}" \
-          #  --name "${NAME}-debug"
-
-          # see the folder structure
-          #ls -R fyne-cross
-            
-          #echo "Checking if debug binary exists before proceeding"
-          # NOTE: The binary is still named $NAME because --name only changes Fyne's app metadata, not the executable file name
-          #if [ ! -f "${RAW_BINARY_OUTPUT}" ]; then
-          #  echo "Error: Debug binary for ${arch} not found at ${RAW_BINARY_OUTPUT}"
-          #  exit 1
-          #fi
-          
-          # Move debug binary to its staging directory, manually renaming it to have the -debug suffix
-          #mv "${RAW_BINARY_OUTPUT}" "${STAGING_DEBUG_DIR}/${NAME}-debug"
-          #echo "Done: Debug binary moved to debug-staging."
-          echo "------------ fyne-cross worked hard. ------------"
-
-          echo "Copy supporting files"
-          cp ./dist/release/install.sh "${STAGING_DIR}/" || true
-          cp ./dist/release/update.sh "${STAGING_DIR}/" || true
-          cp ./dist/release/uninstall.sh "${STAGING_DIR}/" || true
-          cp ./README.md "${STAGING_DIR}/" || true
-          cp ./assets/logo.png "${STAGING_DIR}/${NAME}.png" || true
-          cp ./dist/release/7z-GUI-Linux.desktop "${STAGING_DIR}/" || true
-          echo "Done"
-
+          echo "========================================================"
           echo "Downloading 7zzs for architecture: ${arch}"
+          echo "========================================================"
           case $arch in
             "386")
               DL_URL="${URL_386}"
@@ -153,38 +88,89 @@ jobs:
               ;;
           esac
 
-          # Download the archive (-f fails silently on server errors, -L follows redirects)
+          # Download and extract 7zzs once per architecture
           curl -f -L "${DL_URL}" -o "downloaded_7z_${arch}.tar.xz"
-          
-          # Extract it to a temporary directory
-          mkdir -p temp_extract
-          tar -xf "downloaded_7z_${arch}.tar.xz" -C temp_extract
-          
-          # Find 7zzs file and copy it to STAGING_DIR (futureproofing with find, in case it's in a nested folder in future)
-          find temp_extract -type f -name "7zzs" -exec cp {} "${STAGING_DIR}/" \;
-          find temp_extract -type f -iname "license*" -exec cp {} "${STAGING_DIR}/7-zip.license" \;
-          
-          # Make the binary executable
-          chmod +x "${STAGING_DIR}/7zzs"
+          mkdir -p "temp_extract_${arch}"
+          tar -xf "downloaded_7z_${arch}.tar.xz" -C "temp_extract_${arch}"
 
-          # Clean up download files before compression
-          rm -rf temp_extract "downloaded_7z_${arch}.tar.xz"
-          echo "7zzs added to Staging Area successfully."
+          for server in "${servers[@]}"; do
+            echo "--------------------------------------------------------"
+            echo "Building for Linux ${arch} (${server})"
+            echo "--------------------------------------------------------"
+            
+            # Dynamic Tags setup
+            TAGS="no_emoji,no_animations,no_metadata"
+            if [ "${server}" = "wayland" ]; then
+              TAGS="wayland,no_emoji,no_animations,no_metadata"
+            fi
 
-          echo "Create Archive"
-          TAR_NAME="${NAME}-${arch}-${{ env.GIT_TAG }}.tar.xz"
-          echo "Compressing to ${TAR_NAME}..."
-          tar -cJf "./public/${TAR_NAME}" -C "${STAGING_DIR}" .
-          #tar -cJf "./public/debug-build-${TAR_NAME}" -C "${STAGING_DEBUG_DIR}" .
-          sha256sum "./public/${TAR_NAME}" > "./public/${TAR_NAME}.sha256"
-          #sha256sum "./public/debug-build-${TAR_NAME}" > "./public/debug-build-${TAR_NAME}.sha256"
-          echo "Done"
+            # Setup Staging Areas
+            STAGING_DIR="./staging"
+            STAGING_DEBUG_DIR="./debug-staging"
+            rm -rf "${STAGING_DIR}" "${STAGING_DEBUG_DIR}"
+            mkdir -p "${STAGING_DIR}" "${STAGING_DEBUG_DIR}"
 
-          # Cleanup for next iteration
-          echo "Cleaning up ${arch} files..."
-          rm -rf "${STAGING_DIR}"
-          rm -rf "./fyne-cross/bin/linux-${arch}"
-          echo "Done"
+            echo "------------ fyne-cross working... ------------"
+            echo "------------   RELEASE BUILD...    ------------"
+            # we have removed -s and -w from ldflags for now as fyne-cross has issues passing ldflags to Go
+            # -release flag doesn't work. https://github.com/fyne-io/fyne-cross/issues/272
+            fyne-cross linux \
+              --arch ${arch} \
+              --env GOTOOLCHAIN=auto \
+              --tags "${TAGS}" \
+              --icon "assets/logo.png" \
+              --name "${NAME}"
+
+            echo "--- Directory structure for fyne-cross: ---"
+            ls -R fyne-cross
+            echo "--- End of directory structure ---"
+
+            # fyne-cross names the binary after name of the folder in which main package is
+            RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/7z-gui-linux"
+            
+            echo "Checking if release binary exists before proceeding"
+            if [ ! -f "${RAW_BINARY_OUTPUT}" ]; then
+              echo "Error: Release binary for ${arch} (${server}) not found at ${RAW_BINARY_OUTPUT}"
+              exit 1
+            fi
+            
+            # Move release binary to staging
+            mv "${RAW_BINARY_OUTPUT}" "${STAGING_DIR}/${NAME}"
+            echo "Done: Release binary moved to staging."
+
+            echo "------------ fyne-cross worked hard. ------------"
+
+            echo "Copy supporting files"
+            cp ./dist/release/install.sh "${STAGING_DIR}/" || true
+            cp ./dist/release/update.sh "${STAGING_DIR}/" || true
+            cp ./dist/release/uninstall.sh "${STAGING_DIR}/" || true
+            cp ./README.md "${STAGING_DIR}/" || true
+            cp ./assets/logo.png "${STAGING_DIR}/${NAME}.png" || true
+            cp ./dist/release/7z-GUI-Linux.desktop "${STAGING_DIR}/" || true
+            echo "Done"
+
+            # Copy downloaded 7zzs files from pre-extracted folder
+            # Find 7zzs file and copy it to STAGING_DIR (futureproofing with find, in case it's in a nested folder in future)
+            find "temp_extract_${arch}" -type f -name "7zzs" -exec cp {} "${STAGING_DIR}/" \;
+            find "temp_extract_${arch}" -type f -iname "license*" -exec cp {} "${STAGING_DIR}/7-zip.license" \;
+            chmod +x "${STAGING_DIR}/7zzs"
+
+            echo "Create Archive"
+            TAR_NAME="${NAME}-${server}-${arch}-${{ env.GIT_TAG }}.tar.xz"
+            echo "Compressing to ${TAR_NAME}..."
+            tar -cJf "./public/${TAR_NAME}" -C "${STAGING_DIR}" .
+            sha256sum "./public/${TAR_NAME}" > "./public/${TAR_NAME}.sha256"
+            echo "Done"
+
+            # Cleanup for next server iteration
+            echo "Cleaning up staging and build files for ${arch} (${server})..."
+            rm -rf "${STAGING_DIR}"
+            rm -rf "./fyne-cross/bin/linux-${arch}"
+            echo "Done"
+          done
+
+          # Cleanup 7z download for this architecture
+          rm -rf "temp_extract_${arch}" "downloaded_7z_${arch}.tar.xz"
         done
 
     - name: Output the files structure into a JSON file
@@ -217,9 +203,13 @@ jobs:
           Thank you for using this tool!  
             
           **Installation:**  
-          - Download the `.tar.xz` for your architecture below.  
+          
+          - Download the `.tar.xz` for your display server (x11 or wayland) and architecture below.  
+
           - Make the `install.sh` script executable (right click -> properties -> permissions -> Make executable).  
+
           - Double click `install.sh` to install.  
+          
           - You now have 7z-GUI-Linux installed!  
             
           Star this repo if you find this tool useful!  
