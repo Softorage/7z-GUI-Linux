@@ -49,6 +49,33 @@ jobs:
         sudo apt-get update
         go install github.com/fyne-io/fyne-cross@latest # Use the fyne-cross tool
 
+    - name: Prepare fyne-cross Docker image for Wayland
+      run: |
+        echo "Pulling official fyne-cross Linux image..."
+        docker pull fyneio/fyne-cross-images:linux || docker pull fyneio/fyne-cross:base-latest
+        
+        # Detect which base image was pulled
+        BASE_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "fyne-cross" | head -n 1)
+        echo "Base image detected: ${BASE_IMAGE}"
+
+        echo "Installing Wayland and EGL headers inside the container..."
+        docker run --name prepare-fyne "${BASE_IMAGE}" bash -c "
+          apt-get update && \
+          apt-get install -y --no-install-recommends \
+            libegl1-mesa-dev \
+            libwayland-dev \
+            libgles2-mesa-dev \
+            libxkbcommon-dev \
+            libgbm-dev
+        "
+        
+        echo "Tagging and committing updated image to all known fyne-cross image tags..."
+        docker commit prepare-fyne fyneio/fyne-cross-images:linux
+        docker commit prepare-fyne fyneio/fyne-cross:base-latest
+        docker rm prepare-fyne
+
+        echo "Verification - Local Docker images present:"
+        docker images | grep fyne
     - name: Set up GIT_TAG for Dynamic Folder Names
       run: |
         # Save to GITHUB_ENV so subsequent steps can use these variables
