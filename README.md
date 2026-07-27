@@ -26,6 +26,7 @@ Please leave a star if you find it useful!
 - [Building](#Building)
 - [FAQ](#faq)
 - [Credits](#credits)
+- [Sponsors][#sponsors]
 - [Other tools](#other-tools)
 - [What is Softorage?](#what-is-softorage)
 - [License](#license)
@@ -149,6 +150,12 @@ go mod tidy
 - 7-zip
 - p7zip
 - Softorage
+
+## Sponsors
+
+<a href="https://github.com/MasterCATZ"><img src="https://github.com/MasterCATZ.png?size=60" width="60px" height="60px" alt="MasterCATZ" title="MasterCATZ" /></a><!--2026-07-27 - 2026-08-27-->
+
+This project is made possible by our amazing backers! View the full list in [SUPPORTERS.md](./SUPPORTERS.md).
 
 ## Other tools
 
