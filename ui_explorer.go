@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -60,6 +61,15 @@ type archiveItem struct {
 	Modified string
 }
 
+// archiveLevel tracks nested archive hierarchy for multi-level browsing
+type archiveLevel struct {
+	displayName     string
+	archivePath     string
+	archiveRelPath  string
+	archivePassword string
+	tempDir         string
+}
+
 // explorerTabState holds the isolated runtime data of an individual browser tab
 type explorerTabState struct {
 	currentPath     string
@@ -67,6 +77,7 @@ type explorerTabState struct {
 	archivePath     string
 	archiveRelPath  string
 	archivePassword string
+	archiveStack    []archiveLevel
 	archiveItems    []archiveItem
 	items           []fileSystemItem
 	selectedItems   map[string]bool
@@ -76,6 +87,34 @@ type explorerTabState struct {
 	pathEntry  *widget.Entry
 	fileList   *widget.List
 	tabItem    *container.TabItem
+}
+
+func (state *explorerTabState) getDisplayArchivePath() string {
+	if len(state.archiveStack) == 0 {
+		rel := state.archiveRelPath
+		if rel == "" {
+			rel = "/"
+		}
+		return state.archivePath + " :: " + rel
+	}
+	var parts []string
+	for _, lvl := range state.archiveStack {
+		parts = append(parts, lvl.displayName)
+	}
+	rel := state.archiveRelPath
+	if rel == "" {
+		rel = "/"
+	}
+	return strings.Join(parts, " :: ") + " :: " + rel
+}
+
+func (state *explorerTabState) cleanupTemp() {
+	for _, lvl := range state.archiveStack {
+		if lvl.tempDir != "" {
+			_ = os.RemoveAll(lvl.tempDir)
+		}
+	}
+	state.archiveStack = nil
 }
 
 // clipboardItem handles items stored in our custom application clipboard
@@ -111,9 +150,94 @@ var (
 	favList     *widget.List
 )
 
+// Dynamic Memory & Storage Helpers
+
+// getAvailableRAMBytes reads Linux /proc/meminfo MemAvailable in bytes
+func getAvailableRAMBytes() uint64 {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 2 * 1024 * 1024 * 1024 // Fallback default 2 GB
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "MemAvailable:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				val, err := strconv.ParseUint(fields[1], 10, 64)
+				if err == nil {
+					return val * 1024 // /proc/meminfo outputs in kB
+				}
+			}
+		}
+	}
+	return 2 * 1024 * 1024 * 1024
+}
+
+// isTmpfs checks if a given directory path is mounted on RAM (tmpfs)
+func isTmpfs(path string) bool {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err == nil {
+		// 0x01021994 is TMPFS_MAGIC on Linux
+		return uint64(stat.Type) == 0x01021994
+	}
+	return false
+}
+
+// selectTempStorage routes nested extraction dynamically based on uncompressed size and RAM availability
+func selectTempStorage(requiredBytes uint64) (string, bool) {
+	availRAM := getAvailableRAMBytes()
+	// RAM budget: 15% of MemAvailable, capped at 1 GB
+	ramBudget := availRAM * 15 / 100
+	if ramBudget > 1024*1024*1024 {
+		ramBudget = 1024 * 1024 * 1024
+	}
+
+	tmpIsTmpfs := isTmpfs("/tmp")
+	devShmIsTmpfs := isTmpfs("/dev/shm")
+
+	// Fast Path: RAM (tmpfs) if requiredBytes fits within budget
+	if requiredBytes <= ramBudget {
+		if tmpIsTmpfs {
+			if dir, err := os.MkdirTemp("/tmp", "7gl-ram-*"); err == nil {
+				return dir, true
+			}
+		}
+		if devShmIsTmpfs {
+			if dir, err := os.MkdirTemp("/dev/shm", "7gl-ram-*"); err == nil {
+				return dir, true
+			}
+		}
+	}
+
+	// Safe Path: Persistent Disk Cache (~/.cache/7-zip-gui/nested)
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		cacheDir = os.TempDir()
+	}
+	nestedCache := filepath.Join(cacheDir, "7-zip-gui", "nested")
+	_ = os.MkdirAll(nestedCache, 0755)
+
+	dir, err := os.MkdirTemp(nestedCache, "7gl-disk-*")
+	if err != nil {
+		dir, _ = os.MkdirTemp("", "7gl-disk-*")
+	}
+	return dir, false
+}
+
+// isTarballExtension checks if an archive file is a composite tarball suitable for streaming
+func isTarballExtension(path string) bool {
+	lower := strings.ToLower(path)
+	return strings.HasSuffix(lower, ".tar.gz") ||
+		strings.HasSuffix(lower, ".tar.bz2") ||
+		strings.HasSuffix(lower, ".tar.xz") ||
+		strings.HasSuffix(lower, ".tgz") ||
+		strings.HasSuffix(lower, ".tbz2") ||
+		strings.HasSuffix(lower, ".tbz") ||
+		strings.HasSuffix(lower, ".txz")
+}
+
 // buildExplorerTab constructs the main view structure of the Explorer tab
 func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
-	// Pre-populate with up to 5 non-hidden home subdirectories alphabetically
 	favorites = getInitialFavorites()
 
 	favList = widget.NewList(
@@ -154,10 +278,12 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 			explorerTabsStateMu.Unlock()
 
 			if ok {
+				state.cleanupTemp()
 				state.isArchive = false
 				state.currentPath = fav.Path
 				state.archivePath = ""
 				state.archiveRelPath = ""
+				state.archivePassword = ""
 				state.refresh(w)
 			}
 		} else {
@@ -259,7 +385,6 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 			},
 			w,
 		)
-		// Set a spacious, standard dimensions for the entry dialog
 		d.Resize(fyne.NewSize(450, 180))
 		d.Show()
 	})
@@ -292,6 +417,9 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 
 	docTabs.OnClosed = func(tab *container.TabItem) {
 		explorerTabsStateMu.Lock()
+		if state, ok := explorerTabsState[tab]; ok {
+			state.cleanupTemp()
+		}
 		delete(explorerTabsState, tab)
 		explorerTabsStateMu.Unlock()
 	}
@@ -343,11 +471,7 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 	copyPathBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
 		p := state.currentPath
 		if state.isArchive {
-			rel := state.archiveRelPath
-			if rel == "" {
-				rel = "/"
-			}
-			p = state.archivePath + " :: " + rel
+			p = state.getDisplayArchivePath()
 		}
 		w.Clipboard().SetContent(p)
 		setInfo("Current path copied to clipboard.")
@@ -447,6 +571,9 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 			if item.IsDir {
 				if state.isArchive {
 					state.archiveRelPath = filepath.Join(state.archiveRelPath, item.Name)
+					if len(state.archiveStack) > 0 {
+						state.archiveStack[len(state.archiveStack)-1].archiveRelPath = state.archiveRelPath
+					}
 				} else {
 					state.currentPath = item.Path
 				}
@@ -454,30 +581,114 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 			} else {
 				if isArchiveExtension(item.Name) {
 					targetPath := item.Path
-					go func() {
-						protected := isPasswordProtected(targetPath)
-						if protected {
-							fyne.Do(func() {
-								promptArchivePassword(w, targetPath, "Open", func(pwd string) {
-									state.isArchive = true
-									state.archivePath = targetPath
-									state.archiveRelPath = ""
-									state.archivePassword = pwd
-									state.refresh(w)
-								}, func() {
-									setInfo("Opening password-protected archive cancelled.")
+					if state.isArchive {
+						// Dynamic Memory Routing & Large File Status
+						go func() {
+							uncompressedSize := uint64(item.Size)
+							sizeMB := float64(uncompressedSize) / (1024 * 1024)
+
+							if uncompressedSize > 100*1024*1024 {
+								setInfo(fmt.Sprintf("Decompressing nested archive %s (%.1f MB)...", item.Name, sizeMB))
+							} else {
+								setInfo(fmt.Sprintf("Opening nested archive %s...", item.Name))
+							}
+
+							tempDir, isRAM := selectTempStorage(uncompressedSize)
+							if isRAM {
+								setInfo(fmt.Sprintf("Extracting %s to RAM (tmpfs)...", item.Name))
+							}
+
+							args := []string{"x", state.archivePath, "-o" + tempDir, "-y"}
+							if state.archivePassword != "" {
+								args = append(args, "-p"+state.archivePassword)
+							}
+							args = append(args, item.Path)
+
+							cmd := exec.Command(root7zCmd, args...)
+							if err := cmd.Run(); err != nil {
+								os.RemoveAll(tempDir)
+								fyne.Do(func() {
+									dialog.ShowError(fmt.Errorf("failed to extract nested archive: %v", err), w)
 								})
-							})
-						} else {
-							fyne.Do(func() {
+								return
+							}
+
+							extractedPath := filepath.Join(tempDir, filepath.FromSlash(item.Path))
+							if _, err := os.Stat(extractedPath); err != nil {
+								os.RemoveAll(tempDir)
+								fyne.Do(func() {
+									dialog.ShowError(fmt.Errorf("nested archive file not found after extraction: %v", err), w)
+								})
+								return
+							}
+
+							protected := isPasswordProtected(extractedPath)
+
+							openNested := func(pwd string) {
+								lvl := archiveLevel{
+									displayName:     item.Name,
+									archivePath:     extractedPath,
+									archiveRelPath:  "",
+									archivePassword: pwd,
+									tempDir:         tempDir,
+								}
+								state.archiveStack = append(state.archiveStack, lvl)
+								state.isArchive = true
+								state.archivePath = extractedPath
+								state.archiveRelPath = ""
+								state.archivePassword = pwd
+								state.refresh(w)
+							}
+
+							if protected {
+								fyne.Do(func() {
+									promptArchivePassword(w, extractedPath, "Open", func(pwd string) {
+										openNested(pwd)
+									}, func() {
+										os.RemoveAll(tempDir)
+										setInfo("Opening password-protected archive cancelled.")
+									})
+								})
+							} else {
+								fyne.Do(func() {
+									openNested("")
+								})
+							}
+						}()
+					} else {
+						// Opening top-level archive on disk
+						go func() {
+							protected := isPasswordProtected(targetPath)
+							openRoot := func(pwd string) {
+								lvl := archiveLevel{
+									displayName:     filepath.Base(targetPath),
+									archivePath:     targetPath,
+									archiveRelPath:  "",
+									archivePassword: pwd,
+								}
+								state.archiveStack = []archiveLevel{lvl}
 								state.isArchive = true
 								state.archivePath = targetPath
 								state.archiveRelPath = ""
-								state.archivePassword = ""
+								state.archivePassword = pwd
 								state.refresh(w)
-							})
-						}
-					}()
+							}
+
+							if protected {
+								fyne.Do(func() {
+									promptArchivePassword(w, targetPath, "Open", func(pwd string) {
+										openRoot(pwd)
+									}, func() {
+										setInfo("Opening password-protected archive cancelled.")
+									})
+								})
+							} else {
+								fyne.Do(func() {
+									openRoot("")
+								})
+							}
+						}()
+					}
 				}
 			}
 		}
@@ -589,11 +800,7 @@ func (state *explorerTabState) refresh(w fyne.Window) {
 		state.badgeLabel.SetText("[Archive View]")
 		state.badgeLabel.Refresh()
 
-		rel := state.archiveRelPath
-		if rel == "" {
-			rel = "/"
-		}
-		state.pathEntry.SetText(state.archivePath + " :: " + rel)
+		state.pathEntry.SetText(state.getDisplayArchivePath())
 
 		go func() {
 			all, _, err := parseArchiveEntries(state.archivePath, state.archivePassword)
@@ -613,6 +820,9 @@ func (state *explorerTabState) refresh(w fyne.Window) {
 				state.fileList.Refresh()
 
 				tabTitle := filepath.Base(state.archivePath)
+				if len(state.archiveStack) > 0 {
+					tabTitle = state.archiveStack[len(state.archiveStack)-1].displayName
+				}
 				if state.archiveRelPath != "" {
 					tabTitle += " :: " + filepath.Base(state.archiveRelPath)
 				}
@@ -652,17 +862,34 @@ func (state *explorerTabState) refresh(w fyne.Window) {
 // goUp processes upward navigation logic for both nested paths and archive borders
 func (state *explorerTabState) goUp(w fyne.Window) {
 	if state.isArchive {
-		if state.archiveRelPath == "" || state.archiveRelPath == "/" {
-			state.isArchive = false
-			state.currentPath = filepath.Dir(state.archivePath)
-			state.archivePath = ""
-			state.archiveRelPath = ""
-		} else {
+		if state.archiveRelPath != "" && state.archiveRelPath != "/" {
 			parent := filepath.Dir(state.archiveRelPath)
 			if parent == "." || parent == "/" {
 				state.archiveRelPath = ""
 			} else {
 				state.archiveRelPath = parent
+			}
+			if len(state.archiveStack) > 0 {
+				state.archiveStack[len(state.archiveStack)-1].archiveRelPath = state.archiveRelPath
+			}
+		} else {
+			if len(state.archiveStack) > 1 {
+				top := state.archiveStack[len(state.archiveStack)-1]
+				state.archiveStack = state.archiveStack[:len(state.archiveStack)-1]
+				if top.tempDir != "" {
+					_ = os.RemoveAll(top.tempDir)
+				}
+				prev := state.archiveStack[len(state.archiveStack)-1]
+				state.archivePath = prev.archivePath
+				state.archiveRelPath = prev.archiveRelPath
+				state.archivePassword = prev.archivePassword
+			} else {
+				state.cleanupTemp()
+				state.isArchive = false
+				state.currentPath = filepath.Dir(state.archivePath)
+				state.archivePath = ""
+				state.archiveRelPath = ""
+				state.archivePassword = ""
 			}
 		}
 	} else {
@@ -760,7 +987,57 @@ func getLocalItems(dirPath string, showHidden bool) ([]fileSystemItem, error) {
 	return append(dirs, files...), nil
 }
 
+// parseArchiveEntries handles both Tarball Pipe Streaming and standard listing
 func parseArchiveEntries(archivePath string, password string) ([]archiveItem, bool, error) {
+	var out []byte
+	var err error
+
+	if isTarballExtension(archivePath) {
+		args1 := []string{"x", archivePath, "-so", "-bso0", "-bsp0"}
+		if password != "" {
+			args1 = append(args1, "-p"+password)
+		}
+		cmd1 := exec.Command(root7zCmd, args1...)
+		cmd2 := exec.Command(root7zCmd, "l", "-si", "-ttar", "-slt")
+
+		pr, pw := io.Pipe()
+		cmd1.Stdout = pw
+		cmd2.Stdin = pr
+
+		var outBuf strings.Builder
+		cmd2.Stdout = &outBuf
+
+		if err1 := cmd1.Start(); err1 != nil {
+			pr.Close()
+			pw.Close()
+			return parseStandardArchiveEntries(archivePath, password)
+		}
+		if err2 := cmd2.Start(); err2 != nil {
+			pr.Close()
+			pw.Close()
+			return parseStandardArchiveEntries(archivePath, password)
+		}
+
+		go func() {
+			_ = cmd1.Wait()
+			_ = pw.Close()
+		}()
+
+		err = cmd2.Wait()
+		_ = pr.Close()
+		out = []byte(outBuf.String())
+
+		if err != nil || len(out) == 0 {
+			return parseStandardArchiveEntries(archivePath, password)
+		}
+	} else {
+		return parseStandardArchiveEntries(archivePath, password)
+	}
+
+	return parseSLTOutput(string(out), archivePath)
+}
+
+func parseStandardArchiveEntries(archivePath string, password string) ([]archiveItem, bool, error) {
 	args := []string{"l", "-slt", archivePath}
 	if password != "" {
 		args = append(args, "-p"+password)
@@ -770,8 +1047,11 @@ func parseArchiveEntries(archivePath string, password string) ([]archiveItem, bo
 	if err != nil {
 		return nil, false, err
 	}
+	return parseSLTOutput(string(out), archivePath)
+}
 
-	lines := strings.Split(string(out), "\n")
+func parseSLTOutput(outStr string, archivePath string) ([]archiveItem, bool, error) {
+	lines := strings.Split(outStr, "\n")
 	var items []archiveItem
 	var currentItem *archiveItem
 	var isSolid bool
@@ -1417,7 +1697,7 @@ func handleCopySelectedPath(state *explorerTabState, w fyne.Window) {
 
 	fullPath := filepath.Join(state.currentPath, target)
 	if state.isArchive {
-		fullPath = state.archivePath + " :: " + filepath.Join(state.archiveRelPath, target)
+		fullPath = state.getDisplayArchivePath() + " :: " + target
 	}
 
 	w.Clipboard().SetContent(fullPath)
