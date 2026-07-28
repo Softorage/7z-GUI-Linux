@@ -62,15 +62,15 @@ type archiveItem struct {
 
 // explorerTabState holds the isolated runtime data of an individual browser tab
 type explorerTabState struct {
-	currentPath    string
-	isArchive      bool
-	archivePath    string
-	archiveRelPath string
+	currentPath     string
+	isArchive       bool
+	archivePath     string
+	archiveRelPath  string
 	archivePassword string
-	archiveItems   []archiveItem
-	items          []fileSystemItem
-	selectedItems  map[string]bool
-	showHidden     bool
+	archiveItems    []archiveItem
+	items           []fileSystemItem
+	selectedItems   map[string]bool
+	showHidden      bool
 
 	badgeLabel *widget.Label
 	pathEntry  *widget.Entry
@@ -87,6 +87,9 @@ type clipboardItem struct {
 	ArchivePath string // Source archive disk path (if IsArchive is true)
 	Password    string // Archive password (if IsArchive is true and encrypted)
 }
+
+var cutOperation = "cut   " // TODO: no hacky solution
+var copyOperation = "copy"
 
 // favoriteItem handles the metadata of user-saved directories
 type favoriteItem struct {
@@ -455,7 +458,7 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 						protected := isPasswordProtected(targetPath)
 						if protected {
 							fyne.Do(func() {
-								promptArchivePassword(w, targetPath, func(pwd string) {
+								promptArchivePassword(w, targetPath, "Open", func(pwd string) {
 									state.isArchive = true
 									state.archivePath = targetPath
 									state.archiveRelPath = ""
@@ -485,12 +488,12 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 	state.fileList = list
 
 	cutBtn := widget.NewButtonWithIcon("", theme.ContentCutIcon(), func() {
-		addToClipboard(state, "cut")
+		addToClipboard(state, cutOperation)
 	})
 	cutBtn.Importance = widget.LowImportance
 
 	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-		addToClipboard(state, "copy")
+		addToClipboard(state, copyOperation)
 	})
 	copyBtn.Importance = widget.LowImportance
 
@@ -1197,9 +1200,9 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 					continue
 				}
 
-				if item.Op == "cut" {
+				if item.Op == cutOperation {
 					if item.IsArchive {
-						// If it's a "cut" from inside an archive, delete it from the source archive
+						// If it's a cutOperation from inside an archive, delete it from the source archive
 						delCmd := exec.Command(root7zCmd, "d", item.ArchivePath, item.Path)
 						if delErr := delCmd.Run(); delErr != nil {
 							errors = append(errors, fmt.Errorf("failed to remove cut item from source archive: %w", delErr))
@@ -1828,7 +1831,7 @@ func showClipboardDialog(w fyne.Window) {
 			pathLbl := hBox.Objects[2].(*widget.Label)
 
 			opLbl.SetText(strings.ToUpper(item.Op))
-			if item.Op == "cut" {
+			if item.Op == cutOperation {
 				opLbl.Importance = widget.DangerImportance
 			} else {
 				opLbl.Importance = widget.SuccessImportance
@@ -2091,15 +2094,20 @@ func removeFromClipboard(deletedPaths []string, isArchive bool) {
 	globalClipboard = newClipboard
 }
 
-func promptArchivePassword(w fyne.Window, archivePath string, onSuccess func(string), onCancel func()) {
+func promptArchivePassword(w fyne.Window, archivePath string, confirmLabel string, onSuccess func(string), onCancel func()) {
+	if confirmLabel == "" {
+		confirmLabel = "OK"
+	}
 	pwdEntry := widget.NewPasswordEntry()
 	pwdEntry.PlaceHolder = "Enter Password"
 	items := []*widget.FormItem{
 		widget.NewFormItem("Password:", pwdEntry),
 	}
-	d := dialog.NewForm("Password Required for "+filepath.Base(archivePath), "Open", "Cancel", items, func(submit bool) {
+	d := dialog.NewForm("Password Required for "+filepath.Base(archivePath), confirmLabel, "Cancel", items, func(submit bool) {
 		if submit {
-			onSuccess(pwdEntry.Text)
+			if onSuccess != nil {
+				onSuccess(pwdEntry.Text)
+			}
 		} else {
 			if onCancel != nil {
 				onCancel()

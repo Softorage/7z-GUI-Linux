@@ -50,7 +50,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 			destEntry.SetText(parentPath)
 		}
 	}
-	
+
 	createSubfolderCheck.OnChanged = func(_ bool) {
 		setInfo("Extract into a new folder named after the archive.")
 		// Trigger local update of path destination preview
@@ -270,24 +270,14 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 				}
 
 				if isProtected {
-					pwdEntry := widget.NewPasswordEntry()
-					pwdEntry.PlaceHolder = "Enter Password"
-					items := []*widget.FormItem{
-						widget.NewFormItem("Password:", pwdEntry),
-					}
-					d := dialog.NewForm("Password Required for "+filepath.Base(src), "Extract", "Cancel", items, func(submit bool) {
-						if submit {
-							args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwdEntry.Text}
-							tabs.Select(StatusTabRank)
-							startOperation(args, title, "", w, onFinish)
-						} else {
-							setInfo(fmt.Sprintf("Extraction of %s skipped.", filepath.Base(src)))
-							extractNext(idx + 1)
-						}
-					}, w)
-					windowSize := w.Canvas().Size()
-					d.Resize(fyne.NewSize(windowSize.Width*0.8, d.MinSize().Height))
-					d.Show()
+					promptArchivePassword(w, src, "Extract", func(pwd string) {
+						args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwd}
+						tabs.Select(StatusTabRank)
+						startOperation(args, title, "", w, onFinish)
+					}, func() {
+						setInfo(fmt.Sprintf("Extraction of %s skipped.", filepath.Base(src)))
+						extractNext(idx + 1)
+					})
 				} else {
 					args := []string{"x", src, "-o" + dest, "-bsp1", "-y"}
 					tabs.Select(StatusTabRank)
