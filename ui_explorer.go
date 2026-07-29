@@ -608,7 +608,12 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 	renameFavBtn.Importance = widget.LowImportance
 
 	favSidebar := container.NewBorder(
-		container.NewVBox(widget.NewLabelWithStyle("Favorites", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), widget.NewSeparator()),
+		container.NewVBox(
+			widget.NewRichTextFromMarkdown("## Explorer"),
+			widget.NewSeparator(), widget.NewSeparator(),
+			widget.NewLabelWithStyle("Favorites", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			widget.NewSeparator(),
+		),
 		container.NewVBox(widget.NewSeparator(), container.NewHBox(addFavBtn, removeFavBtn, renameFavBtn)),
 		nil, nil, favList,
 	)
@@ -642,10 +647,7 @@ func buildExplorerTab(w fyne.Window) fyne.CanvasObject {
 	split := container.NewHSplit(favSidebar, docTabs)
 	split.Offset = 0.2
 
-	return container.NewPadded(container.NewBorder(
-		container.NewVBox(widget.NewRichTextFromMarkdown("## Explorer"), widget.NewSeparator()),
-		nil, nil, nil, split,
-	))
+	return container.NewPadded(split)
 }
 
 // createBrowserTab constructs an explorer browser view (path bar, toolbar, file list, bottom actions).
