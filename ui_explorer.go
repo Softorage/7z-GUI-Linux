@@ -88,6 +88,7 @@ type explorerTabState struct {
 	pathEntry  *widget.Entry
 	fileList   *widget.List
 	tabItem    *container.TabItem
+	cutBtn     *widget.Button
 }
 
 // clipboardItem holds details about items copied or cut in the app's custom clipboard,
@@ -774,8 +775,9 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 
 	state.fileList = list
 
-	cutBtn := widget.NewButtonWithIcon("", theme.ContentCutIcon(), func() { addToClipboard(state, cutOperation) })
-	cutBtn.Importance = widget.LowImportance
+	// We disable cutBtn when user is in nested archive
+	state.cutBtn = widget.NewButtonWithIcon("", theme.ContentCutIcon(), func() { addToClipboard(state, cutOperation) })
+	state.cutBtn.Importance = widget.LowImportance
 
 	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() { addToClipboard(state, copyOperation) })
 	copyBtn.Importance = widget.LowImportance
@@ -806,7 +808,7 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 	})
 	showHiddenFilesBtn.Importance = widget.LowImportance
 
-	topActionBar := container.NewHBox(cutBtn, copyBtn, pasteBtn, deleteBtn, layout.NewSpacer(), clipBtn, refreshBtn, showHiddenFilesBtn)
+	topActionBar := container.NewHBox(state.cutBtn, copyBtn, pasteBtn, deleteBtn, layout.NewSpacer(), clipBtn, refreshBtn, showHiddenFilesBtn)
 
 	compressContextBtn := widget.NewButtonWithIcon("Compress", theme.ConfirmIcon(), func() { handleContextCompress(state, w) })
 	compressContextBtn.Importance = widget.HighImportance
@@ -959,6 +961,13 @@ func (state *explorerTabState) refresh(w fyne.Window) {
 			fyne.Do(func() {
 				state.items = virtualItems
 				state.selectedItems = make(map[string]bool)
+				if state.cutBtn != nil {
+					if len(state.archiveStack) > 1 {
+						state.cutBtn.Disable()
+					} else {
+						state.cutBtn.Enable()
+					}
+				}
 				if state.fileList != nil {
 					state.fileList.UnselectAll()
 					state.fileList.Refresh()
@@ -989,6 +998,9 @@ func (state *explorerTabState) refresh(w fyne.Window) {
 			fyne.Do(func() {
 				state.items = localItems
 				state.selectedItems = make(map[string]bool)
+				if state.cutBtn != nil {
+					state.cutBtn.Enable()
+				}
 				if state.fileList != nil {
 					state.fileList.UnselectAll()
 					state.fileList.Refresh()
@@ -1260,6 +1272,11 @@ func extractArchiveItems(items []clipboardItem) (map[string]string, string, erro
 
 // addToClipboard adds currently selected explorer items to the thread-safe app clipboard.
 func addToClipboard(state *explorerTabState, op string) {
+	if state.isArchive && len(state.archiveStack) > 1 && op == cutOperation {
+		setInfo("Cut operation is disabled in nested archives.")
+		return
+	}
+
 	clipboardMu.Lock()
 	defer clipboardMu.Unlock()
 
