@@ -2100,12 +2100,13 @@ func showClipboardDialog(w fyne.Window) {
 			typeLbl := hBox.Objects[1].(*widget.Label)
 			pathLbl := hBox.Objects[2].(*widget.Label)
 
-			opLbl.SetText(strings.ToUpper(item.Op))
 			if item.Op == cutOperation {
 				opLbl.Importance = widget.DangerImportance
 			} else {
 				opLbl.Importance = widget.SuccessImportance
 			}
+			opLbl.SetText(strings.ToUpper(item.Op))
+			opLbl.Refresh()
 
 			if item.IsDir {
 				typeLbl.SetText("[Dir]")
