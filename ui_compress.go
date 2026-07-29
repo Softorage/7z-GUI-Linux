@@ -50,7 +50,6 @@ func hasDuplicateFilenames(sources []string) bool {
 	return false
 }
 
-
 func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	var selectedSources []string
 
