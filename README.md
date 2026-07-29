@@ -53,13 +53,19 @@ This project is made possible by our amazing backers! View the full list in [SUP
 
 ## Features
 
+- Compress and Extract
+- Supports below formats:
+   - Via 7-Zip:
+      - Packing / unpacking: 7z, XZ, BZIP2, GZIP, TAR, ZIP and WIM
+      - Unpacking only: APFS, AR, ARJ, CAB, CHM, CPIO, CramFS, DMG, EXT, FAT, GPT, HFS, IHEX, ISO, LZH, LZMA, MBR, MSI, NSIS, NTFS, QCOW2, RAR, RPM, SquashFS, UDF, UEFI, VDI, VHD, VHDX, VMDK, XAR and Z
 - Basic Explorer with basic file operations
 - Archive operations
-   - Browse through archives
+   - Browse through archives the way you explore folders
+   - Browse through nested archives (zip in a zip) at incredible responsiveness
    - Copy/cut from folder to archive, archive to folder, and archive to archive
 - System independent descriptive clipboard
-- Compress and Extract 
-- Supports:
+- Supports password protected archives
+- Supported compression settings:
    - Multiple archive formats
    - Compression methods
    - Compression level
@@ -73,7 +79,7 @@ This project is made possible by our amazing backers! View the full list in [SUP
    - Split to volumes
    - Encryption settings
 - Provides introductory information for various input options
-- Logging
+- Logging (WIP)
 - Offers familiar GUI to the Windows counterpart.
 
 
