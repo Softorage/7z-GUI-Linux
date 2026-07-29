@@ -19,8 +19,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// TODO: check if new version available and provide instructions to update in a dialog.
-
 func main() {
 	a := app.NewWithID("com.softorage.7gl")
 	a.SetIcon(resourceLogoPng)
