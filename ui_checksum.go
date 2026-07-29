@@ -18,10 +18,24 @@ var checksumFileEntry *widget.Entry
 
 // hashRow groups the widgets representing a single checksum option.
 type hashRow struct {
-	name    string
-	check   *widget.Check
-	entry   *widget.Entry
-	copyBtn *widget.Button
+	name     string
+	check    *widget.Check
+	richText *widget.RichText
+	copyBtn  *widget.Button
+	hashVal  string
+}
+
+func (r *hashRow) setHashText(text string) {
+	r.hashVal = text
+	r.richText.Segments = []widget.RichTextSegment{
+		&widget.TextSegment{
+			Text: text,
+			Style: widget.RichTextStyle{
+				ColorName: theme.ColorNamePlaceHolder,
+			},
+		},
+	}
+	r.richText.Refresh()
 }
 
 // buildChecksumTab constructs the entire Checksum tab view.
@@ -66,25 +80,29 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 	rowsForm := container.New(layout.NewFormLayout())
 	for _, r := range rows {
 		r.check = widget.NewCheck(r.name, nil)
-		r.entry = widget.NewEntry()
-		r.entry.Disable() // Act as read-only to allow highlighting and text copying
-		r.entry.PlaceHolder = "Pending selection..."
+		r.richText = widget.NewRichText(&widget.TextSegment{
+			Text: "Pending selection...",
+			Style: widget.RichTextStyle{
+				ColorName: theme.ColorNamePlaceHolder,
+			},
+		})
+		r.richText.Wrapping = fyne.TextWrapBreak
 
 		// Closure to safely capture the current row's widgets
-		r.copyBtn = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func(entry *widget.Entry, name string) func() {
+		r.copyBtn = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func(row *hashRow) func() {
 			return func() {
-				if entry.Text == "" {
+				if row.hashVal == "" || row.hashVal == "Pending selection..." || row.hashVal == "Calculating..." || strings.HasPrefix(row.hashVal, "Error:") {
 					return
 				}
-				w.Clipboard().SetContent(entry.Text)
-				setInfo(fmt.Sprintf("%s copied to clipboard.", name))
+				w.Clipboard().SetContent(row.hashVal)
+				setInfo(fmt.Sprintf("%s copied to clipboard.", row.name))
 			}
-		}(r.entry, r.name))
+		}(r))
 		r.copyBtn.Disable() // Disabled until calculation completes
 		r.copyBtn.Importance = widget.LowImportance
 
 		// Layout the right-side element: Copy Button on the Right, Entry expanding in the center
-		rightContainer := container.NewBorder(nil, nil, nil, r.copyBtn, r.entry)
+		rightContainer := container.NewBorder(nil, nil, nil, r.copyBtn, r.richText)
 
 		// FormLayout pairs: Column 1, Column 2
 		rowsForm.Add(r.check)
@@ -144,10 +162,10 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 				// Collect selected checksum methods and reset UI state
 				var selected []string
 				for _, r := range rows {
-					r.entry.SetText("")
+					r.setHashText("")
 					r.copyBtn.Disable()
 					if r.check.Checked {
-						r.entry.SetText("Calculating...")
+						r.setHashText("Calculating...")
 						selected = append(selected, r.name)
 					}
 				}
@@ -175,13 +193,13 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 						if r.check.Checked {
 							val, exists := hashes[strings.ToUpper(r.name)]
 							if exists {
-								r.entry.SetText(val)
+								r.setHashText(val)
 								r.copyBtn.Enable()
 							} else {
-								r.entry.SetText("Error: Hash missing from output")
+								r.setHashText("Error: Hash missing from output")
 							}
 						} else {
-							r.entry.SetText("")
+							r.setHashText("Pending selection...")
 						}
 					}
 
