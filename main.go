@@ -212,6 +212,8 @@ func main() {
 		},
 	}
 
+	// Check for updates asynchronously without blocking the UI
+	go checkForUpdates(w, a)
 	w.ShowAndRun()
 }
 
