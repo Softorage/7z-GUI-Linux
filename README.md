@@ -21,9 +21,9 @@
 Requires **no external dependencies** other than a 7-Zip backend binary.
 
 ### Supported Backends
-  - `7zz` — 7-Zip for Linux
-  - `7zzs` — Statically linked 7-Zip for Linux (bundled alongside 7GL)
-  - `p7zip` — Legacy community build (often pre-installed on Linux distributions)
+  - `7zz` => 7-Zip for Linux
+  - `7zzs` => Statically linked 7-Zip for Linux (bundled alongside 7GL)
+  - `p7zip` => Legacy community build (often pre-installed on Linux distributions)
 
 ---
 
