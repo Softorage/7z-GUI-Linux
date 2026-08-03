@@ -1,4 +1,4 @@
-package main
+package tabs
 
 import (
 	"fmt"
@@ -14,23 +14,29 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ncruces/zenity"
+
+	appstate "github.com/Softorage/7z-GUI-Linux/internal/app"
+	"github.com/Softorage/7z-GUI-Linux/internal/domain"
+	"github.com/Softorage/7z-GUI-Linux/internal/engine"
+	"github.com/Softorage/7z-GUI-Linux/internal/sys"
+	"github.com/Softorage/7z-GUI-Linux/internal/ui/components"
 )
 
-var extractSrcEntry *widget.Entry
-var extractDestEntry *widget.Entry
+var ExtractSrcEntry *widget.Entry
+var ExtractDestEntry *widget.Entry
 
-func buildExtractTab(w fyne.Window) fyne.CanvasObject {
+func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 	var selectedArchives []string
 
 	// Backward compatibility global entry (hidden listener)
-	extractSrcEntry = widget.NewEntry()
+	ExtractSrcEntry = widget.NewEntry()
 
 	destEntry := widget.NewEntry()
-	extractDestEntry = destEntry
+	ExtractDestEntry = destEntry
 
 	autoOpenCheck := widget.NewCheck("Auto-open folder after extraction", nil)
 	autoOpenCheck.OnChanged = func(_ bool) {
-		setInfo("Automatically open the destination folder when extraction finishes.")
+		appstate.SetInfo("Automatically open the destination folder when extraction finishes.")
 	}
 
 	createSubfolderCheck := widget.NewCheck("Extract to sub-folder", nil)
@@ -52,7 +58,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 	}
 
 	createSubfolderCheck.OnChanged = func(_ bool) {
-		setInfo("Extract into a new folder named after the archive.")
+		appstate.SetInfo("Extract into a new folder named after the archive.")
 		// Trigger local update of path destination preview
 		updateDestPath()
 	}
@@ -98,7 +104,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 				return
 			}
 
-			labelWidget.SetText(truncateDisplayPath(path, 55))
+			labelWidget.SetText(sys.TruncateDisplayPath(path, 55))
 			iconWidget.SetResource(theme.FileIcon())
 
 			btnWidget.OnTapped = func() {
@@ -141,7 +147,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 		updateDestPath()
 	}
 
-	extractSrcEntry.OnChanged = func(val string) {
+	ExtractSrcEntry.OnChanged = func(val string) {
 		if val == "" {
 			return
 		}
@@ -164,7 +170,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 			}
 		}
 		if hasChanges {
-			extractSrcEntry.SetText("") // Clear listening value safely to prevent recurrences
+			ExtractSrcEntry.SetText("") // Clear listening value safely to prevent recurrences
 			refreshArchiveList()
 		}
 	}
@@ -244,7 +250,7 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 			if autoOpenCheck.Checked {
 				exec.Command("xdg-open", destEntry.Text).Start()
 			}
-			setInfo("All extraction tasks complete.")
+			appstate.SetInfo("All extraction tasks complete.")
 			return
 		}
 
@@ -260,8 +266,8 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 		}
 
 		go func() {
-			setInfo(fmt.Sprintf("Checking %s...", filepath.Base(src)))
-			isProtected := isPasswordProtected(src)
+			appstate.SetInfo(fmt.Sprintf("Checking %s...", filepath.Base(src)))
+			isProtected := engine.IsPasswordProtected(src)
 
 			fyne.Do(func() {
 				title := fmt.Sprintf("Extracting (%d/%d): %s", idx+1, len(selectedArchives), filepath.Base(src))
@@ -270,27 +276,31 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 				}
 
 				if isProtected {
-					promptArchivePassword(w, src, "Extract", func(pwd string) {
+					components.PromptArchivePassword(w, src, "Extract", func(pwd string) {
 						args := []string{"x", src, "-o" + dest, "-bsp1", "-y", "-p" + pwd}
-						tabs.Select(StatusTabRank)
-						startOperation(args, title, "", w, onFinish)
+						if appstate.Tabs != nil {
+							appstate.Tabs.Select(domain.StatusTabRank)
+						}
+						engine.StartOperation(args, title, "", w, onFinish)
 					}, func() {
-						setInfo(fmt.Sprintf("Extraction of %s skipped.", filepath.Base(src)))
+						appstate.SetInfo(fmt.Sprintf("Extraction of %s skipped.", filepath.Base(src)))
 						extractNext(idx + 1)
 					})
 				} else {
 					args := []string{"x", src, "-o" + dest, "-bsp1", "-y"}
-					tabs.Select(StatusTabRank)
-					startOperation(args, title, "", w, onFinish)
+					if appstate.Tabs != nil {
+						appstate.Tabs.Select(domain.StatusTabRank)
+					}
+					engine.StartOperation(args, title, "", w, onFinish)
 				}
 			})
 		}()
 	}
 
 	extractBtn := widget.NewButtonWithIcon("Extract", theme.DownloadIcon(), func() {
-		stateMu.RLock()
-		running := isOperationRunning
-		stateMu.RUnlock()
+		appstate.StateMu.RLock()
+		running := appstate.IsOperationRunning
+		appstate.StateMu.RUnlock()
 		if running {
 			dialog.ShowError(fmt.Errorf("an operation is already running"), w)
 			return
@@ -333,33 +343,4 @@ func buildExtractTab(w fyne.Window) fyne.CanvasObject {
 		nil,
 		container.NewVScroll(form),
 	))
-}
-
-// isPasswordProtected tests if the archive requires a password for extraction.
-func isPasswordProtected(archive string) bool {
-	// Execute '7z l' (List) with a dummy password. This is fast and will reveal
-	// if the file is encrypted without extracting anything.
-	cmd := exec.Command(root7zCmd, "l", "-slt", archive, "-pDummyPassword_123456789")
-	out, err := cmd.CombinedOutput()
-
-	outStr := string(out)
-	lowerOut := strings.ToLower(outStr)
-
-	if err != nil {
-		// If the header itself is encrypted, 7-zip will fail to list files
-		// and output an error mentioning "wrong password" or "encrypted".
-		if strings.Contains(lowerOut, "wrong password") ||
-			strings.Contains(lowerOut, "encrypted archive") ||
-			strings.Contains(lowerOut, "error in encrypted file") {
-			return true
-		}
-	}
-
-	// For archives where headers are NOT encrypted but the files inside are,
-	// 7-zip will successfully list the contents. We check for the 'Encrypted = +' flag.
-	if strings.Contains(outStr, "\nEncrypted = +") {
-		return true
-	}
-
-	return false
 }

@@ -1,4 +1,4 @@
-package main
+package tabs
 
 import (
 	"syscall"
@@ -8,22 +8,25 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	appstate "github.com/Softorage/7z-GUI-Linux/internal/app"
+	"github.com/Softorage/7z-GUI-Linux/internal/version"
 )
 
-func buildStatusTab(w fyne.Window) fyne.CanvasObject {
-	statusLog = widget.NewLabel("No operations running.")
-	statusLog.Wrapping = fyne.TextWrapWord
+func BuildStatusTab(w fyne.Window) fyne.CanvasObject {
+	appstate.StatusLog = widget.NewLabel("No operations running.")
+	appstate.StatusLog.Wrapping = fyne.TextWrapWord
 
 	// Initialize Progress Bar
-	progressBar = widget.NewProgressBar()
-	progressBar.Min = 0.0
-	progressBar.Max = 1.0
-	progressBar.SetValue(0.0)
+	appstate.ProgressBar = widget.NewProgressBar()
+	appstate.ProgressBar.Min = 0.0
+	appstate.ProgressBar.Max = 1.0
+	appstate.ProgressBar.SetValue(0.0)
 
 	// Initialize the History List
-	historyList = widget.NewList(
+	appstate.HistoryList = widget.NewList(
 		func() int {
-			return len(historyData)
+			return len(appstate.HistoryData)
 		},
 		func() fyne.CanvasObject {
 			// Template for each row: [Time] Operation: FileName - Status
@@ -36,7 +39,7 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 			)
 		},
 		func(id widget.ListItemID, item fyne.CanvasObject) {
-			data := historyData[id]
+			data := appstate.HistoryData[id]
 			objs := item.(*fyne.Container).Objects
 			objs[0].(*widget.Label).SetText("[" + data.Timestamp + "]")
 			objs[1].(*widget.Label).SetText(data.OpType + ":")
@@ -57,61 +60,61 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 		},
 	)
 
-	pauseBtn = widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), func() {
-		stateMu.Lock()
-		defer stateMu.Unlock()
-		if currentCmd != nil && currentCmd.Process != nil {
-			if !isPaused {
+	appstate.PauseBtn = widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), func() {
+		appstate.StateMu.Lock()
+		defer appstate.StateMu.Unlock()
+		if appstate.CurrentCmd != nil && appstate.CurrentCmd.Process != nil {
+			if !appstate.IsPaused {
 				// Send SIGSTOP to pause Linux process
-				currentCmd.Process.Signal(syscall.SIGSTOP)
-				isPaused = true
-				pauseBtn.SetText("Resume")
-				pauseBtn.SetIcon(theme.MediaPlayIcon())
-				setInfo("Operation Paused.")
-				statusLog.SetText("Status: Paused")
+				appstate.CurrentCmd.Process.Signal(syscall.SIGSTOP)
+				appstate.IsPaused = true
+				appstate.PauseBtn.SetText("Resume")
+				appstate.PauseBtn.SetIcon(theme.MediaPlayIcon())
+				appstate.SetInfo("Operation Paused.")
+				appstate.StatusLog.SetText("Status: Paused")
 			} else {
 				// Send SIGCONT to resume
-				currentCmd.Process.Signal(syscall.SIGCONT)
-				isPaused = false
-				pauseBtn.SetText("Pause")
-				pauseBtn.SetIcon(theme.MediaPauseIcon())
-				setInfo("Operation Resumed.")
+				appstate.CurrentCmd.Process.Signal(syscall.SIGCONT)
+				appstate.IsPaused = false
+				appstate.PauseBtn.SetText("Pause")
+				appstate.PauseBtn.SetIcon(theme.MediaPauseIcon())
+				appstate.SetInfo("Operation Resumed.")
 			}
 		}
 	})
-	pauseBtn.Disable()
+	appstate.PauseBtn.Disable()
 
-	cancelBtn = widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
-		cancelMu.Lock()
-		if currentCancel != nil {
-			currentCancel() // Clean execution cancellation via context
-			setInfo("Operation cancelled by user context request.")
+	appstate.CancelBtn = widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
+		appstate.CancelMu.Lock()
+		if appstate.CurrentCancel != nil {
+			appstate.CurrentCancel() // Clean execution cancellation via context
+			appstate.SetInfo("Operation cancelled by user context request.")
 		}
-		cancelMu.Unlock()
+		appstate.CancelMu.Unlock()
 	})
-	cancelBtn.Disable()
+	appstate.CancelBtn.Disable()
 
 	// Top section: Current Status
 	currentStatus := container.NewVBox(
 		widget.NewLabelWithStyle("Current Progress", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		progressBar,
-		statusLog,
-		container.NewHBox(layout.NewSpacer(), pauseBtn, cancelBtn),
+		appstate.ProgressBar,
+		appstate.StatusLog,
+		container.NewHBox(layout.NewSpacer(), appstate.PauseBtn, appstate.CancelBtn),
 		widget.NewSeparator(),
 	)
 
 	// Bottom Section: History and Log Tabs
-	historySection := container.NewPadded(historyList)
+	historySection := container.NewPadded(appstate.HistoryList)
 
 	// Initialize the Console Log Text Box
-	consoleLog = widget.NewMultiLineEntry()
-	consoleLog.Wrapping = fyne.TextWrapWord
-	consoleLog.TextStyle = fyne.TextStyle{Monospace: true}
+	appstate.ConsoleLog = widget.NewMultiLineEntry()
+	appstate.ConsoleLog.Wrapping = fyne.TextWrapWord
+	appstate.ConsoleLog.TextStyle = fyne.TextStyle{Monospace: true}
 	// Note: We leave it enabled so users can select and copy the text
 
-	consoleLog.PlaceHolder = "7GL Console Initialized\n--------------------------------------------" + sponsorEditionText + "\n> Waiting for process output..."
+	appstate.ConsoleLog.PlaceHolder = "7GL Console Initialized\n--------------------------------------------" + version.SponsorEditionText + "\n> Waiting for process output..."
 
-	logSection := container.NewPadded(consoleLog)
+	logSection := container.NewPadded(appstate.ConsoleLog)
 
 	bottomTabs := container.NewPadded(container.NewAppTabs(
 		container.NewTabItem("Operation History", historySection),

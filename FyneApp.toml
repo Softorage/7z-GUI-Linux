@@ -1,0 +1,16 @@
+Website = "https://github.com/Softorage/7z-GUI-Linux"
+
+[Details]
+Icon = "assets/logo.png"
+Name = "7GL"
+ID = "com.softorage.7gl"
+Version = "0.4"
+
+[LinuxAndBSD]
+GenericName = "Archive Manager"
+Categories = ["Utility", "Archiving", "Compression"]
+Comment = "Graphical user interface for 7-Zip on Linux"
+Keywords = ["7z", "7-zip", "zip", "tar", "gzip", "compress", "extract", "archive"]
+
+[Migrations]
+fyneDo = true

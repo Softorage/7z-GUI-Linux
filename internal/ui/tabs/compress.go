@@ -1,9 +1,8 @@
-package main
+package tabs
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,45 +15,22 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ncruces/zenity"
+
+	appstate "github.com/Softorage/7z-GUI-Linux/internal/app"
+	"github.com/Softorage/7z-GUI-Linux/internal/domain"
+	"github.com/Softorage/7z-GUI-Linux/internal/engine"
+	"github.com/Softorage/7z-GUI-Linux/internal/sys"
 )
 
 // Any UI manipulation (like .SetText(), .SetValue(), .Refresh()) that is triggered inside a background goroutine (go func()) or a background timer (time.AfterFunc) must be wrapped in fyne.Do
 
-var compressSrcEntry *widget.Entry
+var CompressSrcEntry *widget.Entry
 
-// hasDuplicateFilenames checks if there are files in the sources list that share the same base name
-// but originate from different paths, which causes 7-Zip to fail with "Duplicate filename on disk".
-func hasDuplicateFilenames(sources []string) bool {
-	seen := make(map[string]string)
-	for _, src := range sources {
-		absPath, err := filepath.Abs(src)
-		if err != nil {
-			absPath = src
-		}
-
-		fi, err := os.Stat(absPath)
-		if err != nil {
-			continue
-		}
-
-		if fi.IsDir() {
-			continue // 7-Zip naturally preserves directory hierarchies, so conflicts won't occur at the root.
-		}
-
-		base := filepath.Base(absPath)
-		if existing, found := seen[base]; found && existing != absPath {
-			return true
-		}
-		seen[base] = absPath
-	}
-	return false
-}
-
-func buildCompressTab(w fyne.Window) fyne.CanvasObject {
+func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	var selectedSources []string
 
 	// Backward compatibility global entry (hidden listener)
-	compressSrcEntry = widget.NewEntry()
+	CompressSrcEntry = widget.NewEntry()
 
 	// Custom Archive Name Checkbox and Entry
 	customNameEntry := widget.NewEntry()
@@ -93,11 +69,11 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		}
 
 		// Retrieve consolidated target destination from shared package-level helper
-		destPath := getArchiveDestination(selectedSources, format, customName, sfx)
+		destPath := engine.GetArchiveDestination(selectedSources, format, customName, sfx)
 		archivePreviewLabel.SetText(destPath)
 
-		if hasDuplicateFilenames(selectedSources) {
-			setInfo("Notice: Duplicate filenames detected. Full relative paths will be preserved (-spf2) to prevent conflicts.")
+		if sys.HasDuplicateFilenames(selectedSources) {
+			appstate.SetInfo("Notice: Duplicate filenames detected. Full relative paths will be preserved (-spf2) to prevent conflicts.")
 		}
 	}
 
@@ -149,7 +125,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			}
 
 			// Format text with display truncation
-			labelWidget.SetText(truncateDisplayPath(path, 55))
+			labelWidget.SetText(sys.TruncateDisplayPath(path, 55))
 
 			// Detect directories vs files to select matching system theme icons [1]
 			isDir := false
@@ -209,7 +185,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	}
 
 	// Intercept and parse incoming values directed into standard compressSrcEntry strings
-	compressSrcEntry.OnChanged = func(val string) {
+	CompressSrcEntry.OnChanged = func(val string) {
 		if val == "" {
 			return
 		}
@@ -232,7 +208,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			}
 		}
 		if hasChanges {
-			compressSrcEntry.SetText("") // Clear listening value safely to prevent recurrences
+			CompressSrcEntry.SetText("") // Clear listening value safely to prevent recurrences
 			refreshSourceList()
 		}
 	}
@@ -305,10 +281,10 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	customNameCheck.OnChanged = func(checked bool) {
 		if checked {
 			customNameEntry.Enable()
-			setInfo("Specify a custom name for the resulting archive, without extension.")
+			appstate.SetInfo("Specify a custom name for the resulting archive, without extension.")
 		} else {
 			customNameEntry.Disable()
-			setInfo("Using default archive name.")
+			appstate.SetInfo("Using default archive name.")
 		}
 		updateArchivePreview()
 	}
@@ -324,14 +300,14 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	levelSelect := widget.NewSelect([]string{"Store", "Fastest", "Fast", "Normal", "Maximum", "Ultra"}, nil)
 	levelSelect.SetSelected("Normal")
 	levelSelect.OnChanged = func(_ string) {
-		setInfo("Compression Level: Higher levels offer better compression but use more memory.")
+		appstate.SetInfo("Compression Level: Higher levels offer better compression but use more memory.")
 	}
 
 	// Compression Method Select
 	methodSelect := widget.NewSelect([]string{"LZMA2", "LZMA", "PPMd", "BZip2", "Deflate", "Copy"}, nil)
 	methodSelect.SetSelected("LZMA2")
 	methodSelect.OnChanged = func(_ string) {
-		setInfo("Compression Method: Core algorithm used to compress data. LZMA2 is standard for 7z.")
+		appstate.SetInfo("Compression Method: Core algorithm used to compress data. LZMA2 is standard for 7z.")
 	}
 
 	// Dictionary, Word, Block Sizes
@@ -340,12 +316,12 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	wordSelect := widget.NewSelect([]string{"8", "16", "32", "64", "128", "273"}, nil)
 	wordSelect.SetSelected("64")
 	wordSelect.OnChanged = func(_ string) {
-		setInfo("Word size (fast bytes) determines the length of patterns to match; increasing it can improve compression on structured files but slows down compression speed.")
+		appstate.SetInfo("Word size (fast bytes) determines the length of patterns to match; increasing it can improve compression on structured files but slows down compression speed.")
 	}
 	blockSelect := widget.NewSelect([]string{"Non-solid", "1 MB", "16 MB", "64 MB", "256 MB", "4 GB", "Solid"}, nil)
 	blockSelect.SetSelected("Solid")
 	blockSelect.OnChanged = func(_ string) {
-		setInfo("Determines how many files are compressed together. To extract one file, 7-Zip must decompress all files in the solid block. Under 'Non-Solid', each file is compressed separately resulting in fast extraction, but lower compression. Using a smaller solid block size (64 to 512 MB) is advisable when you need to frequently extract individual files from a large archive.")
+		appstate.SetInfo("Determines how many files are compressed together. To extract one file, 7-Zip must decompress all files in the solid block. Under 'Non-Solid', each file is compressed separately resulting in fast extraction, but lower compression. Using a smaller solid block size (64 to 512 MB) is advisable when you need to frequently extract individual files from a large archive.")
 	}
 
 	// CPU Threads
@@ -356,7 +332,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	}
 	threadSelect := widget.NewSelect(threads, nil)
 	threadSelect.SetSelected(strconv.Itoa(numCPU))
-	threadSelect.OnChanged = func(_ string) { setInfo(fmt.Sprintf("CPU Threads: Total available = %d", numCPU)) }
+	threadSelect.OnChanged = func(_ string) { appstate.SetInfo(fmt.Sprintf("CPU Threads: Total available = %d", numCPU)) }
 
 	/*
 		// Simulated calculation based on dict size
@@ -375,31 +351,31 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 	updateSelect.OnChanged = func(s string) {
 		switch s {
 		case "Add and replace files":
-			setInfo("Add and Replace (Default): Adds all specified files to the archive. Overwrites if they already exist.")
+			appstate.SetInfo("Add and Replace (Default): Adds all specified files to the archive. Overwrites if they already exist.")
 		case "Update and add files":
-			setInfo("Update and Add: Adds new files and only updates files in the archive that are older.")
+			appstate.SetInfo("Update and Add: Adds new files and only updates files in the archive that are older.")
 		case "Freshen existing files":
-			setInfo("Freshen: Only updates files that already exist in the archive. Does not add new files.")
+			appstate.SetInfo("Freshen: Only updates files that already exist in the archive. Does not add new files.")
 		case "Synchronize files":
-			setInfo("Synchronize: Updates older files, adds new files, and deletes files from the archive that are no longer present on the disk.")
+			appstate.SetInfo("Synchronize: Updates older files, adds new files, and deletes files from the archive that are no longer present on the disk.")
 		}
 	}
 
 	sfxCheck.OnChanged = func(_ bool) {
-		setInfo("SFX: Creates a self-extracting executable in .exe format.")
+		appstate.SetInfo("SFX: Creates a self-extracting executable in .exe format.")
 		updateArchivePreview()
 	}
 
 	sharedCheck := widget.NewCheck("Compress shared files", nil)
 	sharedCheck.OnChanged = func(_ bool) {
-		setInfo("Actively detects and groups identical or similar files together before compression and treats them as a single block of data. This allows to find repeating patterns across different files, leading to better results. Adding or extracting a single file from the middle of a large solid archive is slower.")
+		appstate.SetInfo("Actively detects and groups identical or similar files together before compression and treats them as a single block of data. This allows to find repeating patterns across different files, leading to better results. Adding or extracting a single file from the middle of a large solid archive is slower.")
 	}
 
 	// Split
 	splitEntry := widget.NewEntry()
 	splitEntry.PlaceHolder = "e.g., 10M, 100M, 2G"
 	splitEntry.OnChanged = func(_ string) {
-		setInfo("Choose to split the archive in chunks of specified size.")
+		appstate.SetInfo("Choose to split the archive in chunks of specified size.")
 	}
 
 	// Encryption Options
@@ -438,12 +414,12 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 			showPassCheck.Disable()
 			encNameCheck.Disable()
 		}
-		setInfo("Encryption: Protect your archive with AES-256 password encryption.")
+		appstate.SetInfo("Encryption: Protect your archive with AES-256 password encryption.")
 	}
 
 	// Dynamic UI Toggle based on Archive Format
 	formatSelect.OnChanged = func(s string) {
-		setInfo(fmt.Sprintf("Archive format set to: %s", s))
+		appstate.SetInfo(fmt.Sprintf("Archive format set to: %s", s))
 
 		// Reset all fields to Enabled as a baseline
 		levelSelect.Enable()
@@ -548,9 +524,9 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	// Execution Actions
 	archiveBtn := widget.NewButtonWithIcon("Archive", theme.ConfirmIcon(), func() {
-		stateMu.RLock()
-		running := isOperationRunning
-		stateMu.RUnlock()
+		appstate.StateMu.RLock()
+		running := appstate.IsOperationRunning
+		appstate.StateMu.RUnlock()
 		if running {
 			dialog.ShowError(fmt.Errorf("an operation is already running"), w)
 			return
@@ -593,7 +569,7 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		}
 
 		// Map options to 7z CLI
-		args := build7zArgs(
+		args := engine.Build7zArgs(
 			selectedSources,
 			customName,
 			formatSelect.Selected,
@@ -613,14 +589,16 @@ func buildCompressTab(w fyne.Window) fyne.CanvasObject {
 		)
 
 		// Safe fallback: append -spf2 if duplicate names exist across different directories
-		if hasDuplicateFilenames(selectedSources) {
+		if sys.HasDuplicateFilenames(selectedSources) {
 			args = append(args, "-spf2")
 		}
 
 		// Switch to Status tab
-		tabs.Select(StatusTabRank)
+		if appstate.Tabs != nil {
+			appstate.Tabs.Select(domain.StatusTabRank)
+		}
 		// Passing arguments as args, title as "Compressing", window context as w, and nil for onSuccess callback
-		startOperation(args, "Compressing", "", w, nil)
+		engine.StartOperation(args, "Compressing", "", w, nil)
 	})
 	archiveBtn.Importance = widget.HighImportance
 

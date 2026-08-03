@@ -1,4 +1,4 @@
-package main
+package tabs
 
 import (
 	"fmt"
@@ -12,9 +12,13 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/ncruces/zenity"
+
+	appstate "github.com/Softorage/7z-GUI-Linux/internal/app"
+	"github.com/Softorage/7z-GUI-Linux/internal/domain"
+	"github.com/Softorage/7z-GUI-Linux/internal/engine"
 )
 
-var checksumFileEntry *widget.Entry
+var ChecksumFileEntry *widget.Entry
 
 // hashRow groups the widgets representing a single checksum option.
 type hashRow struct {
@@ -38,8 +42,8 @@ func (r *hashRow) setHashText(text string) {
 	r.richText.Refresh()
 }
 
-// buildChecksumTab constructs the entire Checksum tab view.
-func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
+// BuildChecksumTab constructs the entire Checksum tab view.
+func BuildChecksumTab(w fyne.Window) fyne.CanvasObject {
 	// Initialize standard 7-Zip supported hashing algorithms.
 	rows := []*hashRow{
 		{name: "CRC32"},
@@ -58,7 +62,7 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 	fileEntry := widget.NewEntry()
 	fileEntry.PlaceHolder = "Select a file to calculate checksums..."
 
-	checksumFileEntry = fileEntry
+	ChecksumFileEntry = fileEntry
 
 	browseBtn := widget.NewButtonWithIcon("Browse", theme.FolderOpenIcon(), func() {
 		// Run in a goroutine so the Fyne UI doesn't freeze while the native dialog is open
@@ -95,7 +99,7 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 					return
 				}
 				w.Clipboard().SetContent(row.hashVal)
-				setInfo(fmt.Sprintf("%s copied to clipboard.", row.name))
+				appstate.SetInfo(fmt.Sprintf("%s copied to clipboard.", row.name))
 			}
 		}(r))
 		r.copyBtn.Disable() // Disabled until calculation completes
@@ -187,7 +191,7 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 
 				// On successful execution, parse out results and navigate to the Checksum tab
 				onSuccess := func() {
-					hashes := parseHashesFromLog()
+					hashes := engine.ParseHashesFromLog(engine.GetLogLines())
 
 					for _, r := range rows {
 						if r.check.Checked {
@@ -204,14 +208,18 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 					}
 
 					// Switch back to the Checksum tab so the user can see the results
-					tabs.Select(ChecksumTabRank)
+					if appstate.Tabs != nil {
+						appstate.Tabs.Select(domain.ChecksumTabRank)
+					}
 				}
 
 				// Switch to the Status tab so the user can see progress in real-time
-				tabs.Select(StatusTabRank)
+				if appstate.Tabs != nil {
+					appstate.Tabs.Select(domain.StatusTabRank)
+				}
 
 				// Run calculation asynchronously via operations.go wrapper
-				startOperation(args, "Checksums", "", w, onSuccess)
+				engine.StartOperation(args, "Checksums", "", w, onSuccess)
 			},
 			w,
 		)
@@ -233,35 +241,4 @@ func buildChecksumTab(w fyne.Window) fyne.CanvasObject {
 		nil,
 		optionsGroup,
 	))
-}
-
-// parseHashesFromLog scans log outputs and isolates algorithm results.
-func parseHashesFromLog() map[string]string {
-	hashes := make(map[string]string)
-
-	// Fetch unified log lines copy safely
-	allLines := getLogLines()
-
-	// Scan backward to pull target checksum markers specifically from the latest run
-	for i := len(allLines) - 1; i >= 0; i-- {
-		line := allLines[i]
-		if strings.Contains(line, "Running:") {
-			// Stop scanning when reaching the header boundary of the current execution
-			break
-		}
-		if strings.Contains(line, "for data:") {
-			parts := strings.Split(line, "for data:")
-			if len(parts) == 2 {
-				algo := strings.TrimSpace(parts[0])
-				hashVal := strings.TrimSpace(parts[1])
-
-				// Standardize output formats
-				if idx := strings.Index(hashVal, "-"); idx != -1 {
-					hashVal = hashVal[:idx]
-				}
-				hashes[strings.ToUpper(algo)] = strings.TrimSpace(hashVal)
-			}
-		}
-	}
-	return hashes
 }
