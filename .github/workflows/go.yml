@@ -147,13 +147,12 @@ jobs:
 
             echo "------------ fyne-cross working... ------------"
             echo "------------   RELEASE BUILD...    ------------"
-            # passing ldflags via GOFLAGS -env
+            # we have again removed -s and -w from ldflags for now as fyne-cross has issues passing ldflags to Go
             # -release flag doesn't work. https://github.com/fyne-io/fyne-cross/issues/272
             # fyne-cross automatically detects FyneApp.toml and root main.go
             fyne-cross linux \
               --arch ${arch} \
               --env GOTOOLCHAIN=auto \
-              -ldflags "-s -w" \
               --tags "${TAGS}" \
               --icon "assets/logo.png" \
               --name "${NAME}"
