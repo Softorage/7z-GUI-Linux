@@ -76,15 +76,23 @@ jobs:
 
         echo "Verification - Local Docker images present:"
         docker images | grep fyne
+
     - name: Set up GIT_TAG for Dynamic Folder Names
       run: |
         # Save to GITHUB_ENV so subsequent steps can use these variables
         echo "GIT_TAG=$(git describe --tags --always)" >> $GITHUB_ENV
 
-    - name: Inject Git Tag into Version
+    - name: Inject Git Tag into internal/version/version.go
       run: |
-        echo "package main" > version.go
-        echo "var version string = \"${{ env.GIT_TAG }}\"" >> version.go
+        cat <<EOF > internal/version/version.go
+        package version
+
+        // Version is passed at build time
+        var Version string = "${{ env.GIT_TAG }}"
+        var SponsorEditionTag string = ""
+        var SponsorEditionText string = ""
+        EOF
+        echo "Successfully injected GIT_TAG (${{ env.GIT_TAG }}) into internal/version/version.go"
 
     - name: Cross-Compile, Optimize, and Compress
       env:
@@ -139,11 +147,13 @@ jobs:
 
             echo "------------ fyne-cross working... ------------"
             echo "------------   RELEASE BUILD...    ------------"
-            # we have removed -s and -w from ldflags for now as fyne-cross has issues passing ldflags to Go
+            # passing ldflags via GOFLAGS -env
             # -release flag doesn't work. https://github.com/fyne-io/fyne-cross/issues/272
+            # fyne-cross automatically detects FyneApp.toml and root main.go
             fyne-cross linux \
               --arch ${arch} \
               --env GOTOOLCHAIN=auto \
+              --env GOFLAGS="-ldflags='-s -w'" \
               --tags "${TAGS}" \
               --icon "assets/logo.png" \
               --name "${NAME}"
@@ -152,7 +162,7 @@ jobs:
             ls -R fyne-cross
             echo "--- End of directory structure ---"
 
-            # fyne-cross names the binary after name of the folder in which main package is
+            # fyne-cross names the binary lowercased after the folder name or --name flag
             RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/7z-gui-linux"
             
             echo "Checking if release binary exists before proceeding"
