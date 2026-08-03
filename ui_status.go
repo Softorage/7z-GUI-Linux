@@ -109,7 +109,7 @@ func buildStatusTab(w fyne.Window) fyne.CanvasObject {
 	consoleLog.TextStyle = fyne.TextStyle{Monospace: true}
 	// Note: We leave it enabled so users can select and copy the text
 
-	consoleLog.PlaceHolder = "7GL Console Initialized\n--------------------------------------------\n> Waiting for process output..."
+	consoleLog.PlaceHolder = "7GL Console Initialized\n--------------------------------------------" + sponsorEditionText + "\n> Waiting for process output..."
 
 	logSection := container.NewPadded(consoleLog)
 

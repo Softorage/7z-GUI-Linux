@@ -21,6 +21,8 @@ import (
 
 // version is passed at build time
 var version string = "dev"
+var sponsorEditionTag string = "\nSpecial Edition for\nMasterCATZ"
+var sponsorEditionText string = "\nThank you @MasterCATZ for your 'Softorage - Open Source Sponsor' package purchase. It really helps ongoing open-source development at Softorage.\n"
 
 type githubRelease struct {
 	TagName string `json:"tag_name"`

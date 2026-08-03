@@ -101,7 +101,7 @@ func main() {
 			},
 		},
 		&widget.TextSegment{
-			Text: fmt.Sprintf("\nversion %s", version),
+			Text: fmt.Sprintf("\nversion %s%s", version, sponsorEditionTag),
 			Style: widget.RichTextStyle{
 				SizeName:  theme.SizeNameCaptionText,
 				ColorName: theme.ColorNamePlaceHolder,
