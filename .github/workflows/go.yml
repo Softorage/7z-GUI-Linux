@@ -162,7 +162,7 @@ jobs:
             echo "--- End of directory structure ---"
 
             # fyne-cross names the binary lowercased after the folder name or --name flag
-            RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/7z-gui-linux"
+            RAW_BINARY_OUTPUT="./fyne-cross/bin/linux-${arch}/7z-GUI-Linux"
             
             echo "Checking if release binary exists before proceeding"
             if [ ! -f "${RAW_BINARY_OUTPUT}" ]; then
