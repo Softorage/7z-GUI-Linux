@@ -39,9 +39,19 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	customNameCheck := widget.NewCheck("Custom Name", nil)
 
+	// Read initial settings from loaded user config
+	appstate.UserConfigMu.RLock()
+	initialCfg := appstate.UserConfig.Compression
+	appstate.UserConfigMu.RUnlock()
+
 	// Format Select
 	formatSelect := widget.NewSelect([]string{"7z", "xz", "bzip2", "gzip", "tar", "zip", "wim"}, nil)
-	formatSelect.SetSelected("7z")
+//	formatSelect.SetSelected("7z")
+	if initialCfg.DefaultFormat != "" {
+		formatSelect.SetSelected(initialCfg.DefaultFormat)
+	} else {
+		formatSelect.SetSelected("7z")
+	}
 
 	// SFX Checkbox
 	sfxCheck := widget.NewCheck("Create SFX archive", nil)
@@ -298,30 +308,38 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	// Level Select
 	levelSelect := widget.NewSelect([]string{"Store", "Fastest", "Fast", "Normal", "Maximum", "Ultra"}, nil)
-	levelSelect.SetSelected("Normal")
-	levelSelect.OnChanged = func(_ string) {
-		appstate.SetInfo("Compression Level: Higher levels offer better compression but use more memory.")
+	if initialCfg.DefaultLevel != "" {
+		levelSelect.SetSelected(initialCfg.DefaultLevel)
+	} else {
+		levelSelect.SetSelected("Normal")
 	}
 
 	// Compression Method Select
 	methodSelect := widget.NewSelect([]string{"LZMA2", "LZMA", "PPMd", "BZip2", "Deflate", "Copy"}, nil)
-	methodSelect.SetSelected("LZMA2")
-	methodSelect.OnChanged = func(_ string) {
-		appstate.SetInfo("Compression Method: Core algorithm used to compress data. LZMA2 is standard for 7z.")
+	if initialCfg.DefaultMethod != "" {
+		methodSelect.SetSelected(initialCfg.DefaultMethod)
+	} else {
+		methodSelect.SetSelected("LZMA2")
 	}
 
 	// Dictionary, Word, Block Sizes
 	dictSelect := widget.NewSelect([]string{"64 KB", "1 MB", "16 MB", "32 MB", "64 MB", "128 MB"}, nil)
-	dictSelect.SetSelected("32 MB")
+	if initialCfg.DictionarySize != "" {
+		dictSelect.SetSelected(initialCfg.DictionarySize)
+	} else {
+		dictSelect.SetSelected("32 MB")
+	}
 	wordSelect := widget.NewSelect([]string{"8", "16", "32", "64", "128", "273"}, nil)
-	wordSelect.SetSelected("64")
-	wordSelect.OnChanged = func(_ string) {
-		appstate.SetInfo("Word size (fast bytes) determines the length of patterns to match; increasing it can improve compression on structured files but slows down compression speed.")
+	if initialCfg.WordSize != "" {
+		wordSelect.SetSelected(initialCfg.WordSize)
+	} else {
+		wordSelect.SetSelected("64")
 	}
 	blockSelect := widget.NewSelect([]string{"Non-solid", "1 MB", "16 MB", "64 MB", "256 MB", "4 GB", "Solid"}, nil)
-	blockSelect.SetSelected("64 MB")
-	blockSelect.OnChanged = func(_ string) {
-		appstate.SetInfo("Determines how many files are compressed together. To extract one file, 7-Zip must decompress all files in the solid block. Under 'Non-Solid', each file is compressed separately resulting in fast extraction, but lower compression. Using a smaller solid block size (64 to 512 MB) is advisable when you need to frequently extract individual files from a large archive.")
+	if initialCfg.SolidBlockSize != "" {
+		blockSelect.SetSelected(initialCfg.SolidBlockSize)
+	} else {
+		blockSelect.SetSelected("64 MB")
 	}
 
 	// CPU Threads
@@ -331,8 +349,11 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		threads = append(threads, strconv.Itoa(i))
 	}
 	threadSelect := widget.NewSelect(threads, nil)
-	threadSelect.SetSelected(strconv.Itoa(numCPU))
-	threadSelect.OnChanged = func(_ string) { appstate.SetInfo(fmt.Sprintf("CPU Threads: Total available = %d", numCPU)) }
+	if initialCfg.MultithreadingThreads > 0 && initialCfg.MultithreadingThreads <= numCPU {
+		threadSelect.SetSelected(strconv.Itoa(initialCfg.MultithreadingThreads))
+	} else {
+		threadSelect.SetSelected(strconv.Itoa(numCPU))
+	}
 
 	/*
 		// Simulated calculation based on dict size
@@ -348,18 +369,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	// Update Mode
 	updateSelect := widget.NewSelect([]string{"Add and replace files", "Update and add files", "Freshen existing files", "Synchronize files"}, nil)
 	updateSelect.SetSelected("Add and replace files")
-	updateSelect.OnChanged = func(s string) {
-		switch s {
-		case "Add and replace files":
-			appstate.SetInfo("Add and Replace (Default): Adds all specified files to the archive. Overwrites if they already exist.")
-		case "Update and add files":
-			appstate.SetInfo("Update and Add: Adds new files and only updates files in the archive that are older.")
-		case "Freshen existing files":
-			appstate.SetInfo("Freshen: Only updates files that already exist in the archive. Does not add new files.")
-		case "Synchronize files":
-			appstate.SetInfo("Synchronize: Updates older files, adds new files, and deletes files from the archive that are no longer present on the disk.")
-		}
-	}
+	
 
 	sfxCheck.OnChanged = func(_ bool) {
 		appstate.SetInfo("SFX: Creates a self-extracting executable in .exe format.")
@@ -374,10 +384,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	// Split
 	splitEntry := widget.NewEntry()
 	splitEntry.PlaceHolder = "e.g., 10M, 100M, 2G"
-	splitEntry.OnChanged = func(_ string) {
-		appstate.SetInfo("Choose to split the archive in chunks of specified size.")
-	}
-
+	
 	// Encryption Options
 	encCheck := widget.NewCheck("Enable Encryption", nil)
 	passEntry := widget.NewPasswordEntry()
@@ -390,14 +397,72 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	showPassCheck := widget.NewCheck("Show Password", nil)
 	showPassCheck.Disable()
 	encNameCheck := widget.NewCheck("Encrypt file names", nil)
-	encNameCheck.SetChecked(true)
+	encNameCheck.SetChecked(initialCfg.EnableEncryptionHeader)
 	encNameCheck.Disable()
 
-	showPassCheck.OnChanged = func(b bool) {
-		passEntry.Password = !b
-		confirmEntry.Password = !b
-		passEntry.Refresh()
-		confirmEntry.Refresh()
+	// Save helper: Decoupled single point of persistence for compression defaults.
+	// To switch to a manual "Save Defaults" button in the future, detach this function from the field OnChanged handlers and trigger it on button tap instead.
+	saveCompressConfig := func() {
+		threadVal, _ := strconv.Atoi(threadSelect.Selected)
+		appstate.UserConfigMu.Lock()
+		appstate.UserConfig.Compression = domain.CompressionConfig{
+			DefaultFormat:          formatSelect.Selected,
+			DefaultLevel:           levelSelect.Selected,
+			DefaultMethod:          methodSelect.Selected,
+			DictionarySize:         dictSelect.Selected,
+			WordSize:               wordSelect.Selected,
+			SolidBlockSize:         blockSelect.Selected,
+			MultithreadingThreads:  threadVal,
+			EnableEncryptionHeader: encNameCheck.Checked,
+		}
+		appstate.UserConfigMu.Unlock()
+		_ = appstate.SaveConfig()
+	}
+
+	levelSelect.OnChanged = func(_ string) {
+		appstate.SetInfo("Compression Level: Higher levels offer better compression but use more memory.")
+		saveCompressConfig()
+	}
+
+	methodSelect.OnChanged = func(_ string) {
+		appstate.SetInfo("Compression Method: Core algorithm used to compress data. LZMA2 is standard for 7z.")
+		saveCompressConfig()
+	}
+
+	dictSelect.OnChanged = func(_ string) {
+		saveCompressConfig()
+ 	}
+
+	wordSelect.OnChanged = func(_ string) {
+		appstate.SetInfo("Word size (fast bytes) determines the length of patterns to match; increasing it can improve compression on structured files but slows down compression speed.")
+		saveCompressConfig()
+	}
+
+	blockSelect.OnChanged = func(_ string) {
+		appstate.SetInfo("Determines how many files are compressed together. To extract one file, 7-Zip must decompress all files in the solid block. Under 'Non-Solid', each file is compressed separately resulting in fast extraction, but lower compression. Using a smaller solid block size (64 to 512 MB) is advisable when you need to frequently extract individual files from a large archive.")
+		saveCompressConfig()
+	}
+
+	threadSelect.OnChanged = func(_ string) {
+		appstate.SetInfo(fmt.Sprintf("CPU Threads: Total available = %d", numCPU))
+		saveCompressConfig()
+	}
+
+	updateSelect.OnChanged = func(s string) {
+		switch s {
+		case "Add and replace files":
+			appstate.SetInfo("Add and Replace (Default): Adds all specified files to the archive. Overwrites if they already exist.")
+		case "Update and add files":
+			appstate.SetInfo("Update and Add: Adds new files and only updates files in the archive that are older.")
+		case "Freshen existing files":
+			appstate.SetInfo("Freshen: Only updates files that already exist in the archive. Does not add new files.")
+		case "Synchronize files":
+			appstate.SetInfo("Synchronize: Updates older files, adds new files, and deletes files from the archive that are no longer present on the disk.")
+		}
+	}
+
+	splitEntry.OnChanged = func(_ string) {
+		appstate.SetInfo("Choose to split the archive in chunks of specified size.")
 	}
 
 	encCheck.OnChanged = func(b bool) {
@@ -416,6 +481,17 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 			encNameCheck.Disable()
 		}
 		appstate.SetInfo("Encryption: Protect your archive with AES-256 password encryption.")
+	}
+
+	showPassCheck.OnChanged = func(b bool) {
+		passEntry.Password = !b
+		confirmEntry.Password = !b
+		passEntry.Refresh()
+		confirmEntry.Refresh()
+	}
+
+	encNameCheck.OnChanged = func(_ bool) {
+		saveCompressConfig()
 	}
 
 	// Dynamic UI Toggle based on Archive Format
@@ -521,6 +597,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		}
 
 		updateArchivePreview()
+		saveCompressConfig()
 	}
 
 	// Execution Actions

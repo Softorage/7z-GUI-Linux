@@ -35,16 +35,22 @@ func InitConfig() error {
 	v.AddConfigPath(appConfigDir)
 	configFilePath := filepath.Join(appConfigDir, "config.yaml")
 
-	defaultCfg := domain.DefaultConfig()
-	v.SetDefault("version", defaultCfg.Version)
-	v.SetDefault("compression", defaultCfg.Compression)
-	v.SetDefault("updates", defaultCfg.Updates)
-	v.SetDefault("system", defaultCfg.System)
+	// Pre-populate UserConfig in memory with default values
+	UserConfigMu.Lock()
+	UserConfig = domain.DefaultConfig()
+	UserConfigMu.Unlock()
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok || os.IsNotExist(err) {
-			defaultCfg.Favorites = GetInitialFavorites()
-			v.Set("favorites", defaultCfg.Favorites)
+			UserConfigMu.Lock()
+			UserConfig.Favorites = GetInitialFavorites()
+			// Any key missing in config.yaml will remain set to its default value from domain.DefaultConfig()
+			v.Set("favorites", UserConfig.Favorites)
+			v.Set("version", UserConfig.Version)
+			v.Set("compression", UserConfig.Compression)
+			v.Set("updates", UserConfig.Updates)
+			v.Set("system", UserConfig.System)
+			UserConfigMu.Unlock()
 			if writeErr := v.WriteConfigAs(configFilePath); writeErr != nil {
 				return fmt.Errorf("failed to write initial config file: %w", writeErr)
 			}
@@ -63,6 +69,7 @@ func InitConfig() error {
 	Favorites = UserConfig.Favorites
 	if len(Favorites) == 0 {
 		Favorites = GetInitialFavorites()
+		UserConfig.Favorites = Favorites
 		v.Set("favorites", Favorites)
 		_ = v.WriteConfig()
 	}
