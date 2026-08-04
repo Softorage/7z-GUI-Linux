@@ -312,14 +312,14 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	// Dictionary, Word, Block Sizes
 	dictSelect := widget.NewSelect([]string{"64 KB", "1 MB", "16 MB", "32 MB", "64 MB", "128 MB"}, nil)
-	dictSelect.SetSelected("16 MB")
+	dictSelect.SetSelected("32 MB")
 	wordSelect := widget.NewSelect([]string{"8", "16", "32", "64", "128", "273"}, nil)
 	wordSelect.SetSelected("64")
 	wordSelect.OnChanged = func(_ string) {
 		appstate.SetInfo("Word size (fast bytes) determines the length of patterns to match; increasing it can improve compression on structured files but slows down compression speed.")
 	}
 	blockSelect := widget.NewSelect([]string{"Non-solid", "1 MB", "16 MB", "64 MB", "256 MB", "4 GB", "Solid"}, nil)
-	blockSelect.SetSelected("Solid")
+	blockSelect.SetSelected("64 MB")
 	blockSelect.OnChanged = func(_ string) {
 		appstate.SetInfo("Determines how many files are compressed together. To extract one file, 7-Zip must decompress all files in the solid block. Under 'Non-Solid', each file is compressed separately resulting in fast extraction, but lower compression. Using a smaller solid block size (64 to 512 MB) is advisable when you need to frequently extract individual files from a large archive.")
 	}
@@ -390,6 +390,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	showPassCheck := widget.NewCheck("Show Password", nil)
 	showPassCheck.Disable()
 	encNameCheck := widget.NewCheck("Encrypt file names", nil)
+	encNameCheck.SetChecked(true)
 	encNameCheck.Disable()
 
 	showPassCheck.OnChanged = func(b bool) {
