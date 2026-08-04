@@ -67,7 +67,7 @@ func BuildSidebar(a fyne.App) fyne.CanvasObject {
 	)
 
 	aboutText := widget.NewRichText(&widget.TextSegment{
-		Text: fmt.Sprintf("A Softorage Project"),
+		Text: "A Softorage Project",
 		Style: widget.RichTextStyle{
 			SizeName:  theme.SizeNameCaptionText,
 			ColorName: theme.ColorNamePlaceHolder,
@@ -88,5 +88,5 @@ func BuildSidebar(a fyne.App) fyne.CanvasObject {
 	sidebarBg.SetMinSize(fyne.NewSize(180, 0))
 
 	// Combine the background color and the sidebar content
-	return container.NewMax(sidebarBg, sidebarContent)
+	return container.NewStack(sidebarBg, sidebarContent)
 }
