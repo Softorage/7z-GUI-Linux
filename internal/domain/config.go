@@ -6,7 +6,7 @@ package domain
 // CompressionConfig holds default options for compression operations.
 type CompressionConfig struct {
 	DefaultFormat          string `mapstructure:"default_format" json:"default_format" yaml:"default_format"`
-	DefaultLevel           int    `mapstructure:"default_level" json:"default_level" yaml:"default_level"`
+	DefaultLevel           string    `mapstructure:"default_level" json:"default_level" yaml:"default_level"`
 	DefaultMethod          string `mapstructure:"default_method" json:"default_method" yaml:"default_method"`
 	DictionarySize         string `mapstructure:"dictionary_size" json:"dictionary_size" yaml:"dictionary_size"`
 	WordSize               string `mapstructure:"word_size" json:"word_size" yaml:"word_size"`
@@ -48,11 +48,11 @@ func DefaultConfig() AppConfig {
 		Favorites: []FavoriteItem{},
 		Compression: CompressionConfig{
 			DefaultFormat:          "7z",
-			DefaultLevel:           5,
+			DefaultLevel:           "Normal",
 			DefaultMethod:          "LZMA2",
-			DictionarySize:         "16m",
+			DictionarySize:         "32 MB",
 			WordSize:               "64",
-			SolidBlockSize:         "64m",
+			SolidBlockSize:         "64 MB",
 			MultithreadingThreads:  0,
 			EnableEncryptionHeader: true,
 		},
