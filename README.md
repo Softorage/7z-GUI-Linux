@@ -159,6 +159,9 @@ go build -o 7z-GUI-Linux .
 │
 └── internal/                   # Private application packages (enforces Go boundaries)
     │
+    ├── version/                # Version
+    │   └── version.go          # Version
+    │
     ├── domain/                 # Domain models, constants & shared data structures
     │   ├── operation.go        # Operation status, log models, history structures
     │   ├── explorer.go         # File/archive entry models, conflict action enums
