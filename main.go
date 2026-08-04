@@ -19,13 +19,17 @@ import (
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 	"github.com/Softorage/7z-GUI-Linux/internal/engine"
 	"github.com/Softorage/7z-GUI-Linux/internal/sys"
+	"github.com/Softorage/7z-GUI-Linux/internal/ui/components"
 	"github.com/Softorage/7z-GUI-Linux/internal/ui/tabs"
 	"github.com/Softorage/7z-GUI-Linux/internal/version"
-	"github.com/Softorage/7z-GUI-Linux/internal/ui/components"
 )
 
 func main() {
 	a := app.NewWithID("com.softorage.7gl")
+	if err := appstate.InitConfig(); err != nil {
+		fmt.Printf("Warning: Failed to initialize configuration: %v\n", err)
+	}
+
 	a.SetIcon(assets.ResourceLogoPng)
 	w := a.NewWindow("7-Zip GUI for Linux")
 	w.Resize(fyne.NewSize(1040, 650))

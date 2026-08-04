@@ -70,10 +70,10 @@ type ClipboardItem struct {
 	Password    string // Archive password (if IsArchive is true and encrypted)
 }
 
-// FavoriteItem represents a user bookmark pointing to a local directory path.
+// FavoriteItem represents a bookmarked directory in the file browser.
 type FavoriteItem struct {
-	Name string
-	Path string
+	Name string `mapstructure:"name" json:"name" yaml:"name"`
+	Path string `mapstructure:"path" json:"path" yaml:"path"`
 }
 
 // TypeConflictInfo describes conflicts arising from mismatched filesystem entry types.

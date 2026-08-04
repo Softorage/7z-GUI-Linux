@@ -39,9 +39,10 @@ func GetInitialFavorites() []domain.FavoriteItem {
 	return dirs
 }
 
-// The list widget's callbacks (Length and Update) already handle their own locking
+// UpdateFavoritesList refreshes the UI list widget and triggers persistence to config
 func UpdateFavoritesList() {
 	if FavList != nil {
 		FavList.Refresh()
 	}
+	_ = SaveConfig()
 }

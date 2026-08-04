@@ -1,0 +1,94 @@
+package app
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"github.com/spf13/viper"
+
+	"github.com/Softorage/7z-GUI-Linux/internal/domain"
+)
+
+var (
+	UserConfig   domain.AppConfig
+	UserConfigMu sync.RWMutex
+	v            *viper.Viper
+)
+
+// InitConfig initializes Viper, locates or creates ~/.config/7z-gui-linux/config.yaml,
+// loads saved preferences into memory, and sets up defaults.
+func InitConfig() error {
+	v = viper.New()
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
+
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		configDir = filepath.Join(os.Getenv("HOME"), ".config")
+	}
+	appConfigDir := filepath.Join(configDir, "7z-gui-linux")
+	if err := os.MkdirAll(appConfigDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	v.AddConfigPath(appConfigDir)
+	configFilePath := filepath.Join(appConfigDir, "config.yaml")
+
+	defaultCfg := domain.DefaultConfig()
+	v.SetDefault("version", defaultCfg.Version)
+	v.SetDefault("compression", defaultCfg.Compression)
+	v.SetDefault("updates", defaultCfg.Updates)
+	v.SetDefault("system", defaultCfg.System)
+
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok || os.IsNotExist(err) {
+			defaultCfg.Favorites = GetInitialFavorites()
+			v.Set("favorites", defaultCfg.Favorites)
+			if writeErr := v.WriteConfigAs(configFilePath); writeErr != nil {
+				return fmt.Errorf("failed to write initial config file: %w", writeErr)
+			}
+		} else {
+			return fmt.Errorf("error reading config file: %w", err)
+		}
+	}
+
+	UserConfigMu.Lock()
+	if err := v.Unmarshal(&UserConfig); err != nil {
+		UserConfigMu.Unlock()
+		return fmt.Errorf("unable to decode config: %w", err)
+	}
+
+	FavoritesMu.Lock()
+	Favorites = UserConfig.Favorites
+	if len(Favorites) == 0 {
+		Favorites = GetInitialFavorites()
+		v.Set("favorites", Favorites)
+		_ = v.WriteConfig()
+	}
+	FavoritesMu.Unlock()
+	UserConfigMu.Unlock()
+
+	return nil
+}
+
+// SaveConfig safely persists in-memory state (UserConfig and Favorites) to config.yaml.
+func SaveConfig() error {
+	if v == nil {
+		return nil
+	}
+	FavoritesMu.Lock()
+	favsCopy := make([]domain.FavoriteItem, len(Favorites))
+	copy(favsCopy, Favorites)
+	FavoritesMu.Unlock()
+
+	UserConfigMu.Lock()
+	UserConfig.Favorites = favsCopy
+	v.Set("favorites", UserConfig.Favorites)
+	v.Set("compression", UserConfig.Compression)
+	v.Set("updates", UserConfig.Updates)
+	v.Set("system", UserConfig.System)
+	UserConfigMu.Unlock()
+
+	return v.WriteConfig()
+}

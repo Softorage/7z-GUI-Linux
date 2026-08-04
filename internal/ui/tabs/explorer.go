@@ -133,7 +133,11 @@ func propagateWriteBack(state *explorerTabState) {
 
 // BuildExplorerTab creates and sets up the primary Explorer tab view, including sidebar favorites and dynamic tabs.
 func BuildExplorerTab(w fyne.Window) fyne.CanvasObject {
-	appstate.Favorites = appstate.GetInitialFavorites()
+	appstate.FavoritesMu.Lock()
+	if len(appstate.Favorites) == 0 {
+		appstate.Favorites = appstate.GetInitialFavorites()
+	}
+	appstate.FavoritesMu.Unlock()
 
 	appstate.FavList = widget.NewList(
 		func() int {
