@@ -241,14 +241,16 @@ jobs:
           **Installation:**  
           
           - Download the `.tar.xz` for your display server (x11 or wayland) and architecture below.  
-
+          
           - Make the `install.sh` script executable (right click -> properties -> permissions -> Make executable).  
-
+          
           - Double click `install.sh` to install.  
           
           - You now have 7z-GUI-Linux installed!  
             
           Star this repo if you find this tool useful!  
+          
+          Consider getting [the Open Source Supporter: Sponsor Package](https://rzp.io/rzp/hY39lZGa) if you find us deserving or you are feeling generous :)  
             
           ---
         generate_release_notes: true
