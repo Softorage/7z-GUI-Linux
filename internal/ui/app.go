@@ -23,17 +23,19 @@ func BuildMainLayout(w fyne.Window, a fyne.App) fyne.CanvasObject {
 	extractTab := tabs.BuildExtractTab(w)
 	checksumTab := tabs.BuildChecksumTab(w)
 	statusTab := tabs.BuildStatusTab(w)
+	settingsTab := tabs.BuildSettingsTab(w, a)
 
 	// Create a Max container that will act as the dynamic main content area
 	contentArea := container.NewStack()
 
 	// Construct Sidebar Tabs Menu
-	titles := make([]string, 5)
+	titles := make([]string, 6)
 	titles[domain.ExplorerTabRank] = "Explorer"
 	titles[domain.CompressTabRank] = "Compress"
 	titles[domain.ExtractTabRank] = "Extract"
 	titles[domain.ChecksumTabRank] = "Checksum"
 	titles[domain.StatusTabRank] = "Status"
+	titles[domain.SettingsTabRank] = "Settings"
 
 	appstate.Tabs = widget.NewList(
 		func() int { return len(titles) },
@@ -72,6 +74,8 @@ func BuildMainLayout(w fyne.Window, a fyne.App) fyne.CanvasObject {
 			contentArea.Objects = []fyne.CanvasObject{checksumTab}
 		case domain.StatusTabRank:
 			contentArea.Objects = []fyne.CanvasObject{statusTab}
+		case domain.SettingsTabRank:
+			contentArea.Objects = []fyne.CanvasObject{settingsTab}
 		}
 		contentArea.Refresh()
 	}

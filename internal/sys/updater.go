@@ -3,6 +3,7 @@ package sys
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,39 +22,79 @@ type GithubRelease struct {
 	Body    string `json:"body"`
 }
 
-// CheckForUpdates fetches the latest release from GitHub API in the background
-func CheckForUpdates(w fyne.Window, a fyne.App, showDialog func(fyne.Window, fyne.App, GithubRelease)) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+var httpClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
+
+// FetchLatestRelease queries the GitHub API for the latest published release.
+func FetchLatestRelease(parent context.Context) (*GithubRelease, error) {
+	// Derive a bounded 10-second timeout context from the parent context
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/Softorage/7z-GUI-Linux/releases/latest", nil)
 	if err != nil {
-		return
+		return nil, fmt.Errorf("failed to create update request: %w", err)
 	}
 
 	req.Header.Set("User-Agent", "7GL-App/"+version.Version)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		return
+		return nil, fmt.Errorf("network error during update check: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return
+		return nil, fmt.Errorf("server returned unexpected status: %s", resp.Status)
 	}
 
 	var rel GithubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+		return nil, fmt.Errorf("failed to decode release payload: %w", err)
+	}
+	return &rel, nil
+}
+
+// CheckForUpdates performs a silent background update check on application startup.
+func CheckForUpdates(w fyne.Window, a fyne.App, showDialog func(fyne.Window, fyne.App, GithubRelease)) {
+	rel, err := FetchLatestRelease(context.Background())
+	if err != nil || rel == nil {
 		return
 	}
 
 	if IsNewerVersion(rel.TagName, version.Version) {
 		fyne.Do(func() {
 			if showDialog != nil {
-				showDialog(w, a, rel)
+				showDialog(w, a, *rel)
+			}
+		})
+	}
+}
+
+// CheckForUpdatesManual performs an interactive update check with user callbacks for success, up-to-date, and errors.
+func CheckForUpdatesManual(w fyne.Window, a fyne.App, showDialog func(fyne.Window, fyne.App, GithubRelease), onUpToDate func(), onError func(error)) {
+	rel, err := FetchLatestRelease(context.Background())
+	if err != nil {
+		fyne.Do(func() {
+			if onError != nil {
+				onError(err)
+			}
+		})
+		return
+	}
+
+	if IsNewerVersion(rel.TagName, version.Version) {
+		fyne.Do(func() {
+			if showDialog != nil {
+				showDialog(w, a, *rel)
+			}
+		})
+	} else {
+		fyne.Do(func() {
+			if onUpToDate != nil {
+				onUpToDate()
 			}
 		})
 	}

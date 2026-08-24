@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	appstate "github.com/Softorage/7z-GUI-Linux/internal/app"
 	"github.com/Softorage/7z-GUI-Linux/internal/sys"
 	"github.com/Softorage/7z-GUI-Linux/internal/version"
 )
@@ -42,6 +43,37 @@ func ShowUpdateDialog(w fyne.Window, a fyne.App, rel sys.GithubRelease) {
 		notesBox := container.NewGridWrap(fyne.NewSize(440, 160), container.NewPadded(container.NewVScroll(notesText)))
 		contentObjects = append(contentObjects, widget.NewSeparator(), notesHeader, notesBox)
 	}
+
+	// Read current startup preference
+	appstate.UserConfigMu.RLock()
+	startupCheckEnabled := appstate.UserConfig.Updates.CheckOnStartup
+	appstate.UserConfigMu.RUnlock()
+
+	// Preference toggle directly inside the dialog
+	disableStartupCheck := widget.NewCheck("Do not check for updates on startup", func(checked bool) {
+		appstate.UserConfigMu.Lock()
+		appstate.UserConfig.Updates.CheckOnStartup = !checked
+		appstate.UserConfigMu.Unlock()
+
+		if err := appstate.SaveConfig(); err != nil {
+			appstate.SetInfo("Warning: Failed to persist update preference.")
+		} else if checked {
+			appstate.SetInfo("Startup update check disabled. You can re-enable it in Settings.")
+		} else {
+			appstate.SetInfo("Startup update check enabled.")
+		}
+	})
+	disableStartupCheck.SetChecked(!startupCheckEnabled)
+
+	settingsHint := widget.NewRichText(&widget.TextSegment{
+		Text: "You can also check for updates manually or re-enable this in Settings.",
+		Style: widget.RichTextStyle{
+			SizeName:  theme.SizeNameCaptionText,
+			ColorName: theme.ColorNamePlaceHolder,
+		},
+	})
+
+	contentObjects = append(contentObjects, widget.NewSeparator(), disableStartupCheck, settingsHint)
 
 	dialog.ShowCustomConfirm(
 		"Software Update",

@@ -7,6 +7,7 @@ const (
 	ExtractTabRank  = 2
 	ChecksumTabRank = 3
 	StatusTabRank   = 4
+	SettingsTabRank = 5
 )
 
 // ConflictAction enumerates user choices when resolving destination file/folder collisions

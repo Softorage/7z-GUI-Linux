@@ -62,7 +62,13 @@ func main() {
 		},
 	}
 
-	// Check for updates asynchronously without blocking the UI
-	go sys.CheckForUpdates(w, a, components.ShowUpdateDialog)
+	// Conditionally check for updates asynchronously based on user preference
+	appstate.UserConfigMu.RLock()
+	checkOnStartup := appstate.UserConfig.Updates.CheckOnStartup
+	appstate.UserConfigMu.RUnlock()
+
+	if checkOnStartup {
+		go sys.CheckForUpdates(w, a, components.ShowUpdateDialog)
+	}
 	w.ShowAndRun()
 }

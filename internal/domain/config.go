@@ -58,7 +58,6 @@ func DefaultConfig() AppConfig {
 		},
 		Updates: UpdateConfig{
 			CheckOnStartup:     true,
-			IncludePrereleases: false,
 			LastCheckTimestamp: 0,
 			IgnoredVersions:    []string{},
 		},
