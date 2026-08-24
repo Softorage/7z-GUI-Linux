@@ -2,6 +2,7 @@ package tabs
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -219,7 +220,7 @@ func BuildChecksumTab(w fyne.Window) fyne.CanvasObject {
 				}
 
 				// Run calculation asynchronously via operations.go wrapper
-				engine.StartOperation(args, "Checksums", "", w, onSuccess)
+				engine.StartOperation(filepath.Base(filePath), args, "Checksums", "", w, onSuccess)
 			},
 			w,
 		)

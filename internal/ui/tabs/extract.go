@@ -270,7 +270,8 @@ func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 			isProtected := engine.IsPasswordProtected(src)
 
 			fyne.Do(func() {
-				title := fmt.Sprintf("Extracting (%d/%d): %s", idx+1, len(selectedArchives), filepath.Base(src))
+				opMode := fmt.Sprintf("Extracting (%d/%d)", idx+1, len(selectedArchives))
+				targetArchive := filepath.Base(src)
 				onFinish := func() {
 					extractNext(idx + 1)
 				}
@@ -281,7 +282,7 @@ func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 						if appstate.Tabs != nil {
 							appstate.Tabs.Select(domain.StatusTabRank)
 						}
-						engine.StartOperation(args, title, "", w, onFinish)
+						engine.StartOperation(targetArchive, args, opMode, "", w, onFinish)
 					}, func() {
 						appstate.SetInfo(fmt.Sprintf("Extraction of %s skipped.", filepath.Base(src)))
 						extractNext(idx + 1)
@@ -291,7 +292,7 @@ func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 					if appstate.Tabs != nil {
 						appstate.Tabs.Select(domain.StatusTabRank)
 					}
-					engine.StartOperation(args, title, "", w, onFinish)
+					engine.StartOperation(targetArchive, args, opMode, "", w, onFinish)
 				}
 			})
 		}()

@@ -40,12 +40,25 @@ func UpdateConsoleLog(text string) {
 	})
 }
 
+// extractTargetFromArgs parses the primary subject from 7-Zip CLI arguments as a fallback.
+// In 7-Zip command grammar, the first non-switch argument following the command is the primary target.
+func extractTargetFromArgs(args []string) string {
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "@") {
+			return filepath.Base(arg)
+		}
+	}
+	return "Unknown"
+}
+
 // StartOperation executes a 7-Zip command with context-based cancellation and custom working directories.
-func StartOperation(args []string, mode string, workingDir string, w fyne.Window, onSuccess func()) {
-	fileName := "Unknown"
-	if len(args) > 1 {
-		fileName = filepath.Base(args[1]) // Get just the filename from path;
-		// TODO: doesn't work well with checksum command
+func StartOperation(target string, args []string, mode string, workingDir string, w fyne.Window, onSuccess func()) {
+	fileName := strings.TrimSpace(target)
+	if fileName == "" {
+		fileName = extractTargetFromArgs(args)
+	} else {
+		fileName = filepath.Base(fileName)
 	}
 
 	appstate.StateMu.Lock()

@@ -1307,7 +1307,8 @@ func addFilesToArchive(archivePath, relPath, password string, items []domain.Cli
 
 		cleanupAndRun := func() {
 			fyne.Do(func() {
-				engine.StartOperation(args, "Adding to Archive", tempDir, w, func() {
+				targetArchive := filepath.Base(archivePath)
+				engine.StartOperation(targetArchive, args, "Adding to Archive", tempDir, w, func() {
 					os.RemoveAll(tempDir)
 					if extractDir != "" {
 						os.RemoveAll(extractDir)
@@ -1361,7 +1362,8 @@ func deleteFromArchive(archivePath string, relPaths []string, password string, w
 	if password != "" {
 		args = append(args, "-p"+password)
 	}
-	engine.StartOperation(args, "Deleting from Archive", "", w, func() {
+	targetArchive := filepath.Base(archivePath)
+	engine.StartOperation(targetArchive, args, "Deleting from Archive", "", w, func() {
 		var stateCopy *explorerTabState
 		explorerTabsStateMu.RLock()
 		if activeTab := docTabs.Selected(); activeTab != nil {

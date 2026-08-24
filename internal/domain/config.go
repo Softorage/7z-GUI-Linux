@@ -1,7 +1,6 @@
 package domain
 
 // TODO: allow user to configure % of RAM to be used when working with nested archives. to be done after implementing a config file to store user preferences.
-// TODO: allow disabling update check (after config file is there)
 
 // Canonical identifier and folder constants for XDG Base Directory resolution
 const (
@@ -26,7 +25,6 @@ type CompressionConfig struct {
 // UpdateConfig holds preferences regarding update notifications and checks.
 type UpdateConfig struct {
 	CheckOnStartup     bool     `mapstructure:"check_on_startup" json:"check_on_startup" yaml:"check_on_startup"`
-	IncludePrereleases bool     `mapstructure:"include_prereleases" json:"include_prereleases" yaml:"include_prereleases"`
 	LastCheckTimestamp int64    `mapstructure:"last_check_timestamp" json:"last_check_timestamp" yaml:"last_check_timestamp"`
 	IgnoredVersions    []string `mapstructure:"ignored_versions" json:"ignored_versions" yaml:"ignored_versions"`
 }
@@ -35,8 +33,6 @@ type UpdateConfig struct {
 type SystemConfig struct {
 	RAMUsagePercent         int    `mapstructure:"ram_usage_percent" json:"ram_usage_percent" yaml:"ram_usage_percent"`
 	RAMLimitMB              int64  `mapstructure:"ram_limit_mb" json:"ram_limit_mb" yaml:"ram_limit_mb"`
-	TmpfsPath               string `mapstructure:"tmpfs_path" json:"tmpfs_path" yaml:"tmpfs_path"`
-	AutoCleanupTempSec      int    `mapstructure:"auto_cleanup_temp_sec" json:"auto_cleanup_temp_sec" yaml:"auto_cleanup_temp_sec"`
 	ClipboardClearOnSuccess bool   `mapstructure:"clipboard_clear_on_success" json:"clipboard_clear_on_success" yaml:"clipboard_clear_on_success"`
 }
 
@@ -72,8 +68,6 @@ func DefaultConfig() AppConfig {
 		System: SystemConfig{
 			RAMUsagePercent:         49,
 			RAMLimitMB:              8192,
-			TmpfsPath:               TmpfsDefaultDir,
-			AutoCleanupTempSec:      3600,
 			ClipboardClearOnSuccess: true,
 		},
 	}

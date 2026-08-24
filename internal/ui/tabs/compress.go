@@ -738,7 +738,8 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 			appstate.Tabs.Select(domain.StatusTabRank)
 		}
 		// Passing arguments as args, title as "Compressing", window context as w, and nil for onSuccess callback
-		engine.StartOperation(args, "Compressing", "", w, nil)
+		targetArchive := filepath.Base(engine.GetArchiveDestination(selectedSources, outputDir, formatSelect.Selected, customName, sfxCheck.Checked))
+		engine.StartOperation(targetArchive, args, "Compressing", "", w, nil)
 	})
 	archiveBtn.Importance = widget.HighImportance
 

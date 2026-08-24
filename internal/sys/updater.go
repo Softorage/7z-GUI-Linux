@@ -14,8 +14,6 @@ import (
 	"github.com/Softorage/7z-GUI-Linux/internal/version"
 )
 
-// TODO: allow disabling update check (after config file is there)
-
 type GithubRelease struct {
 	TagName string `json:"tag_name"`
 	HTMLURL string `json:"html_url"`
