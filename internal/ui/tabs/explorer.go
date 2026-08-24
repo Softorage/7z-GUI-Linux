@@ -36,8 +36,6 @@ import (
 // headers for columns, sort columns (on clicking headers)
 // disable the buttons on bottombar when not relevant. there shouldnt be any button in primary (blue) color... honestly we should get rid of the part in extract button where it asks for destination when you select a file inside archive and extract it. instead it should say to 'simply copy/paste the file where you want it to be extracted'.
 //
-// allow user to configure % of RAM to be used when working with nested archvies. to be done after implementing a config file to store user preferences.
-//
 // zstd support
 
 // explorerTabState holds the full runtime state for an individual tab in the File Explorer.
@@ -529,8 +527,13 @@ func openArchiveLevel(w fyne.Window, state *explorerTabState, item domain.FileSy
 				appstate.SetInfo(fmt.Sprintf("Opening nested archive %s...", item.Name))
 			}
 
-			// Allocate temp workspace (RAM tmpfs or disk cache)
-			tempDir, isRAM := sys.SelectTempStorage(uncompressedSize)
+			// Allocate temp workspace (RAM tmpfs or disk cache) based on user config
+			appstate.UserConfigMu.RLock()
+			ramPercent := appstate.UserConfig.System.RAMUsagePercent
+			ramLimitMB := appstate.UserConfig.System.RAMLimitMB
+			appstate.UserConfigMu.RUnlock()
+
+			tempDir, isRAM := sys.SelectTempStorage(uncompressedSize, ramPercent, ramLimitMB)
 			if isRAM {
 				appstate.SetInfo(fmt.Sprintf("Extracting %s to RAM (tmpfs)...", item.Name))
 			}

@@ -1,13 +1,18 @@
 package domain
 
-// TODO: allow user to configure % of RAM to be used when working with nested archives. to be done after implementing a config file to store user preferences.
-
 // Canonical identifier and folder constants for XDG Base Directory resolution
 const (
 	AppID            = "com.softorage.7gl"
 	AppDirName       = "7z-gui-linux"
 	LegacyAppDirName = "7-zip-gui"
 	TmpfsDefaultDir  = "/dev/shm/" + AppDirName
+
+	MinRAMUsagePercent = 10
+	MaxRAMUsagePercent = 90
+	DefaultRAMPercent  = 49
+
+	MinRAMLimitMB     = 256
+	DefaultRAMLimitMB = 8192
 )
 
 // CompressionConfig holds default options for compression operations.
@@ -66,8 +71,8 @@ func DefaultConfig() AppConfig {
 			IgnoredVersions:    []string{},
 		},
 		System: SystemConfig{
-			RAMUsagePercent:         49,
-			RAMLimitMB:              8192,
+			RAMUsagePercent:         DefaultRAMPercent,
+			RAMLimitMB:              DefaultRAMLimitMB,
 			ClipboardClearOnSuccess: true,
 		},
 	}
