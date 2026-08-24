@@ -7,7 +7,7 @@ import (
 
 // GetArchiveDestination calculates the full target path for the archive.
 // Used in ui_compress and the build7zArgs arguments.
-func GetArchiveDestination(sources []string, format string, customName string, sfx bool) string {
+func GetArchiveDestination(sources []string, outputDir string, format string, customName string, sfx bool) string {
 	if len(sources) == 0 {
 		return ""
 	}
@@ -33,7 +33,12 @@ func GetArchiveDestination(sources []string, format string, customName string, s
 	}
 
 	firstSrc := sources[0]
-	dir := filepath.Dir(firstSrc)
+	dir := strings.TrimSpace(outputDir)
+	if dir == "" {
+		dir = filepath.Dir(firstSrc)
+	} else {
+		dir = filepath.Clean(dir)
+	}
 
 	var filename string
 	if customName != "" {
@@ -59,10 +64,10 @@ func GetArchiveDestination(sources []string, format string, customName string, s
 	return filepath.Join(dir, filename)
 }
 
-func Build7zArgs(src []string, customName string, format string, level string, method string, dictSize string, wordSize, blockSize string, threads, update string, sfx bool, shared bool, split string, enc bool, pass string, encName bool) []string {
+func Build7zArgs(src []string, outputDir string, customName string, format string, level string, method string, dictSize string, wordSize, blockSize string, threads, update string, sfx bool, shared bool, split string, enc bool, pass string, encName bool) []string {
 
 	// Call unified helper to get the target destination
-	dest := GetArchiveDestination(src, format, customName, sfx)
+	dest := GetArchiveDestination(src, outputDir, format, customName, sfx)
 
 	// Determine if the format supports multi-file archiving/updating features
 	updatableArchiveFormat := format != "tar" && format != "gzip" && format != "bzip2" && format != "xz"

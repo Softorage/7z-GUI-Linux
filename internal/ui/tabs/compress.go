@@ -3,6 +3,7 @@ package tabs
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -39,6 +40,44 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	customNameCheck := widget.NewCheck("Custom Name", nil)
 
+	// Output Directory Entry, Picker Button, and Reset Button
+	outputDirEntry := widget.NewEntry()
+	outputDirEntry.PlaceHolder = "Default: Same directory as source files"
+	var resetOutputDirBtn *widget.Button
+
+	outputDirBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
+		currentPath := strings.TrimSpace(outputDirEntry.Text)
+		go func() {
+			opts := []zenity.Option{
+				zenity.Title("Select Output Folder"),
+				zenity.Directory(),
+			}
+			if currentPath != "" {
+				if !strings.HasSuffix(currentPath, string(filepath.Separator)) {
+					currentPath += string(filepath.Separator)
+				}
+				opts = append(opts, zenity.Filename(currentPath))
+			}
+			folder, err := zenity.SelectFile(opts...)
+			if err == nil && folder != "" {
+				fyne.Do(func() {
+					outputDirEntry.SetText(folder)
+				})
+			}
+		}()
+	})
+	outputDirBtn.Importance = widget.LowImportance
+
+	resetOutputDirBtn = widget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {
+		outputDirEntry.SetText("")
+		appstate.SetInfo("Output folder reset to default (source directory).")
+	})
+	resetOutputDirBtn.Importance = widget.LowImportance
+	resetOutputDirBtn.Disable()
+
+	outputDirActions := container.NewHBox(outputDirBtn, resetOutputDirBtn)
+	outputDirContainer := container.NewBorder(nil, nil, nil, outputDirActions, outputDirEntry)
+
 	// Read initial settings from loaded user config
 	appstate.UserConfigMu.RLock()
 	initialCfg := appstate.UserConfig.Compression
@@ -71,6 +110,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		sfx := sfxCheck.Checked
 		customChecked := customNameCheck.Checked
 		customText := strings.TrimSpace(customNameEntry.Text)
+		outputDir := strings.TrimSpace(outputDirEntry.Text)
 
 		customName := ""
 
@@ -79,7 +119,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		}
 
 		// Retrieve consolidated target destination from shared package-level helper
-		destPath := engine.GetArchiveDestination(selectedSources, format, customName, sfx)
+		destPath := engine.GetArchiveDestination(selectedSources, outputDir, format, customName, sfx)
 		archivePreviewLabel.SetText(destPath)
 
 		if sys.HasDuplicateFilenames(selectedSources) {
@@ -279,6 +319,9 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	clearBtn := widget.NewButtonWithIcon("Clear All", theme.ContentClearIcon(), func() {
 		selectedSources = nil
+		outputDirEntry.SetText("")
+		customNameEntry.SetText("")
+		customNameCheck.SetChecked(false)
 		refreshSourceList()
 	})
 	clearBtn.Importance = widget.LowImportance
@@ -300,6 +343,15 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	}
 
 	customNameEntry.OnChanged = func(_ string) {
+		updateArchivePreview()
+	}
+
+	outputDirEntry.OnChanged = func(val string) {
+		if strings.TrimSpace(val) != "" {
+			resetOutputDirBtn.Enable()
+		} else {
+			resetOutputDirBtn.Disable()
+		}
 		updateArchivePreview()
 	}
 
@@ -615,6 +667,15 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 			return
 		}
 
+		// Verify custom output directory exists if provided
+		outputDir := strings.TrimSpace(outputDirEntry.Text)
+		if outputDir != "" {
+			if fi, err := os.Stat(outputDir); err != nil || !fi.IsDir() {
+				dialog.ShowError(fmt.Errorf("output folder does not exist or is not a directory: %s", outputDir), w)
+				return
+			}
+		}
+
 		// Ensure custom name is provided if the checkbox is checked
 		if customNameCheck.Checked && strings.TrimSpace(customNameEntry.Text) == "" {
 			dialog.ShowError(fmt.Errorf("please enter a custom archive name or uncheck the box"), w)
@@ -649,6 +710,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		// Map options to 7z CLI
 		args := engine.Build7zArgs(
 			selectedSources,
+			outputDir,
 			customName,
 			formatSelect.Selected,
 			levelSelect.Selected,
@@ -687,7 +749,8 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	form := widget.NewForm(
 		widget.NewFormItem("Source:", srcContainer),
 		widget.NewFormItem("", customNameContainer),
-		widget.NewFormItem("Output:", archivePreviewLabel),
+		widget.NewFormItem("Output Folder:", outputDirContainer),
+		widget.NewFormItem("Output Preview:", archivePreviewLabel),
 		widget.NewFormItem("Archive format:", formatSelect),
 		widget.NewFormItem("Compression level:", levelSelect),
 		widget.NewFormItem("Compression method:", methodSelect),
@@ -719,6 +782,9 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 				layout.NewSpacer(),
 				widget.NewButton("Cancel", func() {
 					selectedSources = nil
+					outputDirEntry.SetText("")
+					customNameEntry.SetText("")
+					customNameCheck.SetChecked(false)
 					refreshSourceList()
 				}),
 				archiveBtn,
