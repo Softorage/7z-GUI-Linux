@@ -91,7 +91,7 @@ func BuildSettingsTab(w fyne.Window, a fyne.App) fyne.CanvasObject {
 		widget.NewLabelWithStyle("System & Architecture", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewSeparator(),
 		widget.NewForm(
-			widget.NewFormItem("Config Path:", widget.NewLabel(fmt.Sprintf("~/.config/%s/config.yaml", domain.AppDirName))), // TODO: fetch the config directory instead of hardcoding like this. the user may be running as root.
+			widget.NewFormItem("Config Path:", widget.NewLabel(appstate.GetConfigFilePath())),
 			widget.NewFormItem("Tmpfs Staging:", widget.NewLabel(domain.TmpfsDefaultDir)),
 		),
 	)

@@ -16,6 +16,20 @@ var (
 	v            *viper.Viper
 )
 
+// GetConfigDir returns the resolved absolute configuration directory for the active user.
+func GetConfigDir() string {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		configDir = filepath.Join(os.Getenv("HOME"), ".config")
+	}
+	return filepath.Join(configDir, domain.AppDirName)
+}
+
+// GetConfigFilePath returns the resolved absolute path to config.yaml.
+func GetConfigFilePath() string {
+	return filepath.Join(GetConfigDir(), "config.yaml")
+}
+
 // InitConfig initializes Viper, locates or creates ~/.config/7z-gui-linux/config.yaml,
 // loads saved preferences into memory, and sets up defaults.
 func InitConfig() error {
@@ -23,17 +37,13 @@ func InitConfig() error {
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
 
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		configDir = filepath.Join(os.Getenv("HOME"), ".config")
-	}
-	appConfigDir := filepath.Join(configDir, domain.AppDirName)
+	appConfigDir := GetConfigDir()
 	if err := os.MkdirAll(appConfigDir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
 	v.AddConfigPath(appConfigDir)
-	configFilePath := filepath.Join(appConfigDir, "config.yaml")
+	configFilePath := GetConfigFilePath()
 
 	// Pre-populate UserConfig in memory with default values
 	UserConfigMu.Lock()
