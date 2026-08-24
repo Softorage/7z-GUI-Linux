@@ -5,8 +5,36 @@ EXEC="7z-GUI-Linux"
 BIN7Z="7zzs"
 ICON="7z-GUI-Linux.png"
 
+APP_DIR_NAME="7z-gui-linux"
+FYNE_APP_ID="com.softorage.7gl"
+LEGACY_APP_NAME="7-zip-gui"
+
+PURGE_CONFIG=false
+
+# Parse CLI arguments
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -p|--purge)
+            PURGE_CONFIG=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS]"
+            echo "Options:"
+            echo "  -p, --purge        Remove binaries, desktop entries, caches, AND all configuration/Fyne storage"
+            echo "  -k, --keep-config  Remove binaries and caches but retain user configuration (default)"
+            echo "  -h, --help         Display this help message"
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
 REAL_USER="${SUDO_USER:-$USER}"
 USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+[ -z "$USER_HOME" ] && USER_HOME="$HOME"
 
 # Determine Desktop folder (handling internationalization)
 if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
@@ -46,11 +74,48 @@ if [ -f "$USER_DESKTOP_FILE" ]; then
   rm -f "$USER_DESKTOP_FILE"
 fi
 
+# Unconditionally purge disk cache and orphan temporary staging files
+echo "Cleaning application cache and temporary workspaces..."
+USER_CACHE_DIR="${XDG_CACHE_HOME:-$USER_HOME/.cache}"
+rm -rf "$USER_CACHE_DIR/$APP_DIR_NAME"
+rm -rf "$USER_CACHE_DIR/$LEGACY_APP_NAME"
+rm -rf "$USER_CACHE_DIR/fyne/$FYNE_APP_ID"
+rm -rf "$USER_CACHE_DIR/$FYNE_APP_ID"
+
+if [ "$EUID" -eq 0 ] && [ -d "/root/.cache" ]; then
+    rm -rf "/root/.cache/$APP_DIR_NAME" "/root/.cache/$LEGACY_APP_NAME" "/root/.cache/fyne/$FYNE_APP_ID" "/root/.cache/$FYNE_APP_ID"
+fi
+
+rm -rf /tmp/7gl-* /dev/shm/7gl-* "/dev/shm/$APP_DIR_NAME" 2>/dev/null || true
+
+# Handle user preferences, Fyne metadata, and local data removal
+USER_CONFIG_DIR="${XDG_CONFIG_HOME:-$USER_HOME/.config}"
+USER_DATA_DIR="${XDG_DATA_HOME:-$USER_HOME/.local/share}"
+
+if [ "$PURGE_CONFIG" = true ]; then
+    echo "Purging configuration files, Fyne preferences, and local data..."
+    rm -rf "$USER_CONFIG_DIR/$APP_DIR_NAME"
+    rm -rf "$USER_CONFIG_DIR/fyne/$FYNE_APP_ID"
+    rm -rf "$USER_CONFIG_DIR/$FYNE_APP_ID"
+    rm -rf "$USER_DATA_DIR/$FYNE_APP_ID"
+
+    if [ "$EUID" -eq 0 ] && [ -d "/root" ]; then
+        rm -rf "/root/.config/$APP_DIR_NAME"
+        rm -rf "/root/.config/fyne/$FYNE_APP_ID"
+        rm -rf "/root/.config/$FYNE_APP_ID"
+        rm -rf "/root/.local/share/$FYNE_APP_ID"
+    fi
+else
+    if [ -d "$USER_CONFIG_DIR/$APP_DIR_NAME" ]; then
+        echo "Preserved configuration at: $USER_CONFIG_DIR/$APP_DIR_NAME (use --purge to remove)"
+    fi
+fi
+
 echo "Uninstallation complete!"
 
 # Send notification on successful uninstall
 TITLE="Uninstall Complete"
-MSG="7z GUI Linux uninstallled successfully."
+MSG="7z GUI Linux uninstalled successfully."
 
 if command -v notify-send &> /dev/null; then
     # Linux

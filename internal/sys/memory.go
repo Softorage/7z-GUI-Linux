@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 )
 
 // Helper for Memory & System Storage
@@ -63,7 +65,7 @@ func SelectTempStorage(requiredBytes uint64) (string, bool) {
 	if err != nil {
 		cacheDir = os.TempDir()
 	}
-	nestedCache := filepath.Join(cacheDir, "7-zip-gui", "nested")
+	nestedCache := filepath.Join(cacheDir, domain.AppDirName, "nested")
 	_ = os.MkdirAll(nestedCache, 0755)
 
 	dir, err := os.MkdirTemp(nestedCache, "7gl-disk-*")

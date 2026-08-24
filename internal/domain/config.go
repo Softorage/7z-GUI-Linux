@@ -3,6 +3,14 @@ package domain
 // TODO: allow user to configure % of RAM to be used when working with nested archives. to be done after implementing a config file to store user preferences.
 // TODO: allow disabling update check (after config file is there)
 
+// Canonical identifier and folder constants for XDG Base Directory resolution
+const (
+	AppID            = "com.softorage.7gl"
+	AppDirName       = "7z-gui-linux"
+	LegacyAppDirName = "7-zip-gui"
+	TmpfsDefaultDir  = "/dev/shm/" + AppDirName
+)
+
 // CompressionConfig holds default options for compression operations.
 type CompressionConfig struct {
 	DefaultFormat          string `mapstructure:"default_format" json:"default_format" yaml:"default_format"`
@@ -64,7 +72,7 @@ func DefaultConfig() AppConfig {
 		System: SystemConfig{
 			RAMUsagePercent:         49,
 			RAMLimitMB:              8192,
-			TmpfsPath:               "/dev/shm/7z-gui-linux",
+			TmpfsPath:               TmpfsDefaultDir,
 			AutoCleanupTempSec:      3600,
 			ClipboardClearOnSuccess: true,
 		},

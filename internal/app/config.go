@@ -27,7 +27,7 @@ func InitConfig() error {
 	if err != nil {
 		configDir = filepath.Join(os.Getenv("HOME"), ".config")
 	}
-	appConfigDir := filepath.Join(configDir, "7z-gui-linux")
+	appConfigDir := filepath.Join(configDir, domain.AppDirName)
 	if err := os.MkdirAll(appConfigDir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}

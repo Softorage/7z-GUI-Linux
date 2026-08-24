@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	a := app.NewWithID("com.softorage.7gl")
+	a := app.NewWithID(domain.AppID)
 	if err := appstate.InitConfig(); err != nil {
 		fmt.Printf("Warning: Failed to initialize configuration: %v\n", err)
 	}
