@@ -22,6 +22,15 @@ func TruncateDisplayPath(path string, maxLen int) string {
 	return "..." + path[len(path)-(maxLen-3):]
 }
 
+// GetDiskCacheDir returns the resolved disk cache directory for the application.
+func GetDiskCacheDir() string {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		cacheDir = os.TempDir()
+	}
+	return filepath.Join(cacheDir, domain.AppDirName)
+}
+
 // IsArchiveExtension returns true if the given path has a supported archive extension.
 func IsArchiveExtension(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))

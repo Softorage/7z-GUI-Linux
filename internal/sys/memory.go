@@ -104,11 +104,7 @@ func SelectTempStorage(requiredBytes uint64, ramPercent int, ramLimitMB int64) (
 	}
 
 	// Fallback to disk cache directory
-	cacheDir, err := os.UserCacheDir()
-	if err != nil {
-		cacheDir = os.TempDir()
-	}
-	nestedCache := filepath.Join(cacheDir, domain.AppDirName, "nested")
+	nestedCache := filepath.Join(GetDiskCacheDir(), "nested")
 	_ = os.MkdirAll(nestedCache, 0755)
 
 	dir, err := os.MkdirTemp(nestedCache, "7gl-disk-*")

@@ -886,7 +886,7 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 		}
 
 		onSuccess := func() {
-			if appstate.ClipboardClearOnSuccess {
+			if appstate.GetClipboardClearOnSuccess() {
 				appstate.ClipboardMu.Lock()
 				appstate.GlobalClipboard = nil
 				appstate.ClipboardMu.Unlock()
@@ -958,7 +958,7 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 					appstate.SetInfo("Paste operation stopped.")
 				} else {
 					appstate.SetInfo("Paste completed successfully.")
-					if appstate.ClipboardClearOnSuccess {
+					if appstate.GetClipboardClearOnSuccess() {
 						appstate.ClipboardMu.Lock()
 						appstate.GlobalClipboard = nil
 						appstate.ClipboardMu.Unlock()
@@ -1595,9 +1595,9 @@ func showClipboardDialog(w fyne.Window) {
 	clearBtn.Importance = widget.DangerImportance
 
 	clearOnSuccessCheck := widget.NewCheck("Clear clipboard on successful paste", func(checked bool) {
-		appstate.ClipboardClearOnSuccess = checked
+		appstate.SetClipboardClearOnSuccess(checked)
 	})
-	clearOnSuccessCheck.SetChecked(appstate.ClipboardClearOnSuccess)
+	clearOnSuccessCheck.SetChecked(appstate.GetClipboardClearOnSuccess())
 
 	content := container.NewBorder(
 		container.NewVBox(clearOnSuccessCheck, widget.NewSeparator()),

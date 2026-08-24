@@ -12,10 +12,24 @@ var (
 	CutOperation  = "cut   " // TODO: no hacky solution
 	CopyOperation = "copy"
 
-	GlobalClipboard         []domain.ClipboardItem
-	ClipboardClearOnSuccess = true
-	ClipboardMu             sync.Mutex
+	GlobalClipboard []domain.ClipboardItem
+	ClipboardMu     sync.Mutex
 )
+
+// GetClipboardClearOnSuccess returns whether the clipboard should auto-clear after a successful paste.
+func GetClipboardClearOnSuccess() bool {
+	UserConfigMu.RLock()
+	defer UserConfigMu.RUnlock()
+	return UserConfig.System.ClipboardClearOnSuccess
+}
+
+// SetClipboardClearOnSuccess updates and persists the clipboard auto-clear preference to config.yaml.
+func SetClipboardClearOnSuccess(clear bool) {
+	UserConfigMu.Lock()
+	UserConfig.System.ClipboardClearOnSuccess = clear
+	UserConfigMu.Unlock()
+	_ = SaveConfig()
+}
 
 // IsTempDirPinned returns true if any item currently in the global clipboard
 // resides within the given temporary directory path.

@@ -206,23 +206,58 @@ func BuildSettingsTab(w fyne.Window, a fyne.App) fyne.CanvasObject {
 		ramDiagnosticLabel,
 	)
 
-	// Section: System & Environment Info
-	systemInfoSection := container.NewVBox(
-		widget.NewLabelWithStyle("System & Architecture", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+	// Section: Clipboard & Storage
+	clearClipboardCheck := widget.NewCheck("Clear custom clipboard after successful paste", func(checked bool) {
+		appstate.SetClipboardClearOnSuccess(checked)
+		if checked {
+			appstate.SetInfo("Clipboard auto-clear enabled.")
+		} else {
+			appstate.SetInfo("Clipboard auto-clear disabled.")
+		}
+	})
+	clearClipboardCheck.SetChecked(appstate.GetClipboardClearOnSuccess())
+
+	clipboardSection := container.NewVBox(
+		widget.NewLabelWithStyle("Clipboard", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewSeparator(),
-		widget.NewForm(
-			widget.NewFormItem("Config Path:", widget.NewLabel(appstate.GetConfigFilePath())),
-			widget.NewFormItem("Tmpfs Staging:", widget.NewLabel(domain.TmpfsDefaultDir)),
-		),
+		clearClipboardCheck,
 	)
 
+	// Section Write Locations
+	createPathRow := func(path string, label string) fyne.CanvasObject {
+		copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+			a.Clipboard().SetContent(path)
+			appstate.SetInfo(fmt.Sprintf("%s copied to clipboard.", label))
+		})
+		copyBtn.Importance = widget.LowImportance
+
+		pathLabel := widget.NewLabel(path)
+		pathLabel.TextStyle = fyne.TextStyle{Monospace: true}
+		pathLabel.Truncation = fyne.TextTruncateEllipsis
+
+		return container.NewBorder(nil, nil, nil, copyBtn, pathLabel)
+	}
+
+	storageForm := widget.NewForm(
+		widget.NewFormItem("Configuration:", createPathRow(appstate.GetConfigFilePath(), "Config path")),
+		widget.NewFormItem("Disk Cache:", createPathRow(sys.GetDiskCacheDir(), "Disk cache directory")),
+		widget.NewFormItem("RAM tmpfs Staging:", createPathRow(domain.TmpfsDefaultDir, "RAM tmpfs path")),
+	)
+
+	writeLocationsSection := container.NewVBox(
+		widget.NewLabelWithStyle("Storage & Write Locations", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewSeparator(),
+		storageForm,
+	)
 	// Combine sections into a scrollable card container
 	settingsContent := container.NewVBox(
 		updateSection,
 		widget.NewLabel(""),
 		ramSection,
 		widget.NewLabel(""),
-		systemInfoSection,
+		clipboardSection,
+		widget.NewLabel(""),
+    writeLocationsSection,
 	)
 
 	return container.NewPadded(container.NewBorder(
