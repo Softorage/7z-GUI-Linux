@@ -384,7 +384,13 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 			// Temporarily unbind OnChanged to prevent false triggers during item recycled re-rendering
 			check.OnChanged = nil
 			check.SetChecked(state.selectedItems[item.Name])
-			check.OnChanged = func(checked bool) { state.selectedItems[item.Name] = checked }
+			check.OnChanged = func(checked bool) {
+				if checked {
+					state.selectedItems[item.Name] = true
+				} else {
+					delete(state.selectedItems, item.Name)
+				}
+			}
 
 			name.SetText(sys.TruncateDisplayPath(item.Name, 40))
 

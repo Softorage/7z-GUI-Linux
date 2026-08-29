@@ -3,6 +3,8 @@ package engine
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/Softorage/7z-GUI-Linux/internal/sys"
 )
 
 // GetArchiveDestination calculates the full target path for the archive.
@@ -44,7 +46,7 @@ func GetArchiveDestination(sources []string, outputDir string, format string, cu
 	if customName != "" {
 		filename = customName
 		// Ensure custom name has correct extension if not already present
-		if !strings.HasSuffix(strings.ToLower(filename), ext) {
+		if !sys.HasSuffixFold(filename, ext) {
 			filename += ext
 		}
 	} else {
@@ -79,10 +81,11 @@ func Build7zArgs(src []string, outputDir string, customName string, format strin
 	if updatableArchiveFormat {
 		if update != "Add and replace files" {
 			cmdAction = "u"
-			if update == "Freshen existing files" {
+			switch update {
+			case "Freshen existing files":
 				// -uw0 avoids adding new files that are on disk only
 				updateSwitches = append(updateSwitches, "-uw0")
-			} else if update == "Synchronize files" {
+			case "Synchronize files":
 				// -up0 deletes files from the archive that are missing on disk
 				updateSwitches = append(updateSwitches, "-up0")
 			}
@@ -104,9 +107,10 @@ func Build7zArgs(src []string, outputDir string, customName string, format strin
 		if level != "Store" {
 			// Apply Compression Method
 			if method != "" {
-				if format == "zip" {
+				switch format {
+				case "zip":
 					args = append(args, "-mm="+method)
-				} else if format == "7z" || format == "wim" {
+				case "7z", "wim":
 					// 7z uses -m0 switch to assign a generic method
 					args = append(args, "-m0="+method)
 				}

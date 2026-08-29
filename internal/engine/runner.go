@@ -17,6 +17,19 @@ import (
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 )
 
+func countLines(s string) int {
+	if s == "" {
+		return 0
+	}
+	count := 1
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			count++
+		}
+	}
+	return count
+}
+
 // updateConsoleLog updates the log text and positions the entry cursor at the very row, forcing Fyne's native scroll viewport to go to the bottom.
 func UpdateConsoleLog(text string) {
 	appstate.LogTextMu.Lock()
@@ -27,13 +40,14 @@ func UpdateConsoleLog(text string) {
 	appstate.LastLogText = text
 	appstate.LogTextMu.Unlock()
 
+	numLines := countLines(text)
+
 	// Safely queue UI update on Fyne's main event thread
 	fyne.Do(func() {
 		if appstate.ConsoleLog != nil {
 			appstate.ConsoleLog.SetText(text)
-			lines := strings.Split(text, "\n")
-			if len(lines) > 0 {
-				appstate.ConsoleLog.CursorRow = len(lines) - 1
+			if numLines > 0 {
+				appstate.ConsoleLog.CursorRow = numLines - 1
 			}
 			appstate.ConsoleLog.Refresh()
 		}

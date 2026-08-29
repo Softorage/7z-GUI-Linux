@@ -35,28 +35,36 @@ func GetDiskCacheDir() string {
 
 // IsArchiveExtension returns true if the given path has a supported archive extension.
 func IsArchiveExtension(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".7z" || ext == ".zip" || ext == ".tar" || ext == ".gz" || ext == ".bz2" || ext == ".xz" || ext == ".wim" || ext == ".rar"
+	ext := filepath.Ext(path)
+	return HasSuffixFold(ext, ".7z") ||
+		HasSuffixFold(ext, ".zip") ||
+		HasSuffixFold(ext, ".tar") ||
+		HasSuffixFold(ext, ".gz") ||
+		HasSuffixFold(ext, ".bz2") ||
+		HasSuffixFold(ext, ".xz") ||
+		HasSuffixFold(ext, ".wim") ||
+		HasSuffixFold(ext, ".rar")
 }
 
 // IsSingleFileArchive returns true if the archive format can only pack a single file directly.
 // TODO: Same logic as isSingleStream in ui_compress. Consider DRYing it.
 func IsSingleFileArchive(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".gz" || ext == ".bz2" || ext == ".xz"
+	ext := filepath.Ext(path)
+	return HasSuffixFold(ext, ".gz") ||
+		HasSuffixFold(ext, ".bz2") ||
+		HasSuffixFold(ext, ".xz")
 }
 
 // IsTarballExtension checks if a filename uses a double-compression TAR extension.
 // 7-Zip treats tarballs (.tar.gz, .tgz, etc.) as two distinct archive layers.
 func IsTarballExtension(path string) bool {
-	lower := strings.ToLower(path)
-	return strings.HasSuffix(lower, ".tar.gz") ||
-		strings.HasSuffix(lower, ".tar.bz2") ||
-		strings.HasSuffix(lower, ".tar.xz") ||
-		strings.HasSuffix(lower, ".tgz") ||
-		strings.HasSuffix(lower, ".tbz2") ||
-		strings.HasSuffix(lower, ".tbz") ||
-		strings.HasSuffix(lower, ".txz")
+	return HasSuffixFold(path, ".tar.gz") ||
+		HasSuffixFold(path, ".tar.bz2") ||
+		HasSuffixFold(path, ".tar.xz") ||
+		HasSuffixFold(path, ".tgz") ||
+		HasSuffixFold(path, ".tbz2") ||
+		HasSuffixFold(path, ".tbz") ||
+		HasSuffixFold(path, ".txz")
 }
 
 // FormatSize formats byte values into human-readable strings (B, KB, MB, GB, TB).
@@ -164,16 +172,8 @@ func GetLocalItems(dirPath string, showHidden bool) ([]domain.FileSystemItem, er
 		}
 	}
 
-	// Zero-allocation, reflection-free case-insensitive sort with tie-breaker
-	caseInsensitiveSort := func(a, b domain.FileSystemItem) int {
-		if c := compareFold(a.Name, b.Name); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.Name, b.Name)
-	}
-
-	slices.SortFunc(dirs, caseInsensitiveSort)
-	slices.SortFunc(files, caseInsensitiveSort)
+	slices.SortFunc(dirs, CompareFileSystemItems)
+	slices.SortFunc(files, CompareFileSystemItems)
 
 	return append(dirs, files...), nil
 }
@@ -251,23 +251,15 @@ func GetVirtualItems(all []domain.ArchiveItem, currentRelPath string) []domain.F
 		}
 	}
 
-	// Zero-allocation, reflection-free case-insensitive sort with tie-breaker
-	caseInsensitiveSort := func(a, b domain.FileSystemItem) int {
-		if c := compareFold(a.Name, b.Name); c != 0 {
-			return c
-		}
-		// Exact case tie-breaker (stable order for Linux case-sensitive entries)
-		return cmp.Compare(a.Name, b.Name)
-	}
-
-	slices.SortFunc(dirs, caseInsensitiveSort)
-	slices.SortFunc(files, caseInsensitiveSort)
+	slices.SortFunc(dirs, CompareFileSystemItems)
+	slices.SortFunc(files, CompareFileSystemItems)
 
 	return append(dirs, files...)
 }
 
-// compareFold compares two ASCII/UTF-8 strings case-insensitively without heap allocation.
-func compareFold(s1, s2 string) int {
+// CompareFold compares two ASCII/UTF-8 strings case-insensitively without heap allocation.
+// It returns -1 if s1 < s2, 0 if s1 == s2, and 1 if s1 > s2.
+func CompareFold(s1, s2 string) int {
 	for len(s1) > 0 && len(s2) > 0 {
 		c1, c2 := s1[0], s2[0]
 		// Fast-path ASCII lowercasing inline
@@ -284,6 +276,22 @@ func compareFold(s1, s2 string) int {
 		s2 = s2[1:]
 	}
 	return cmp.Compare(len(s1), len(s2))
+}
+
+// HasSuffixFold tests whether string s ends with suffix case-insensitively without heap allocation.
+func HasSuffixFold(s, suffix string) bool {
+	if len(s) < len(suffix) {
+		return false
+	}
+	return CompareFold(s[len(s)-len(suffix):], suffix) == 0
+}
+
+// CompareFileSystemItems compares two FileSystemItem records case-insensitively, breaking ties by exact case.
+func CompareFileSystemItems(a, b domain.FileSystemItem) int {
+	if c := CompareFold(a.Name, b.Name); c != 0 {
+		return c
+	}
+	return cmp.Compare(a.Name, b.Name)
 }
 
 // CopyFile copies standard file bytes from src to dst.

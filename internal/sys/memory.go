@@ -38,23 +38,35 @@ func parseMeminfoValue(data []byte, prefix []byte) (uint64, bool) {
 	return 0, false
 }
 
-// GetTotalRAMBytes reads Linux `/proc/meminfo` to calculate total system RAM.
-func GetTotalRAMBytes() uint64 {
-	data, err := os.ReadFile("/proc/meminfo")
+func readMeminfo(buf []byte) int {
+	f, err := os.Open("/proc/meminfo")
 	if err != nil {
 		return 0
 	}
-	val, _ := parseMeminfoValue(data, []byte("MemTotal:"))
+	defer f.Close()
+	n, _ := f.Read(buf)
+	return n
+}
+
+// GetTotalRAMBytes reads Linux `/proc/meminfo` to calculate total system RAM.
+func GetTotalRAMBytes() uint64 {
+	var buf [2048]byte
+	n := readMeminfo(buf[:])
+	if n == 0 {
+		return 0
+	}
+	val, _ := parseMeminfoValue(buf[:n], []byte("MemTotal:"))
 	return val
 }
 
 // GetAvailableRAMBytes reads Linux `/proc/meminfo` to calculate available system RAM.
 func GetAvailableRAMBytes() uint64 {
-	data, err := os.ReadFile("/proc/meminfo")
-	if err != nil {
+	var buf [2048]byte
+	n := readMeminfo(buf[:])
+	if n == 0 {
 		return 2 * 1024 * 1024 * 1024 // 2GB fallback
 	}
-	if val, ok := parseMeminfoValue(data, []byte("MemAvailable:")); ok {
+	if val, ok := parseMeminfoValue(buf[:n], []byte("MemAvailable:")); ok {
 		return val
 	}
 	return 2 * 1024 * 1024 * 1024
