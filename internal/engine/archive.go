@@ -116,11 +116,8 @@ func ExtractArchiveItems(items []domain.ClipboardItem) (map[string]string, strin
 }
 
 // ListArchive retrieves detailed metadata from an archive using 7-Zip's SLT flag `-slt`.
-// Returns error explicitly if tarball pipeline decompression fails instead of falling back to outer Gzip header.
+// Streams stdout directly to ParseSLTReader to avoid buffering hundreds of megabytes in heap.
 func ListArchive(archivePath, password string) ([]domain.ArchiveItem, bool, error) {
-	var out []byte
-	var err error
-
 	if sys.IsTarballExtension(archivePath) {
 		args1 := []string{"x", archivePath, "-so", "-bso0", "-bsp0"}
 		if password != "" {
@@ -134,20 +131,25 @@ func ListArchive(archivePath, password string) ([]domain.ArchiveItem, bool, erro
 		cmd1.Stdout = pw
 		cmd2.Stdin = pr
 
-		var outBuf strings.Builder
-		cmd2.Stdout = &outBuf
+		stdout2, err := cmd2.StdoutPipe()
+		if err != nil {
+			pr.Close()
+			pw.Close()
+			return nil, false, fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
 
 		if err1 := cmd1.Start(); err1 == nil && cmd2.Start() == nil {
 			go func() {
 				_ = cmd1.Wait()
 				_ = pw.Close()
 			}()
-			err = cmd2.Wait()
+			items, isSolid, parseErr := ParseSLTReader(stdout2, archivePath)
+			_ = cmd2.Wait()
 			_ = pr.Close()
-			if err != nil {
-				return nil, false, fmt.Errorf("failed to list tarball archive contents: %w", err)
+			if parseErr != nil {
+				return nil, false, fmt.Errorf("failed to parse tarball archive contents: %w", parseErr)
 			}
-			return ParseSLTOutput(outBuf.String(), archivePath)
+			return items, isSolid, nil
 		} else {
 			_ = pr.Close()
 			_ = pw.Close()
@@ -161,12 +163,20 @@ func ListArchive(archivePath, password string) ([]domain.ArchiveItem, bool, erro
 	}
 	cmd := exec.Command(Root7zCmd, args...)
 	cmd.Stdin = strings.NewReader("")
-	out, err = cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, false, err
 	}
+	if err := cmd.Start(); err != nil {
+		return nil, false, err
+	}
 
-	return ParseSLTOutput(string(out), archivePath)
+	items, isSolid, parseErr := ParseSLTReader(stdout, archivePath)
+	_ = cmd.Wait()
+	if parseErr != nil {
+		return nil, false, parseErr
+	}
+	return items, isSolid, nil
 }
 
 // IsPasswordProtected tests if the archive requires a password for extraction.

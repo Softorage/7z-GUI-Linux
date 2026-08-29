@@ -1,6 +1,9 @@
 package engine
 
 import (
+	"bufio"
+	"bytes"
+	"io"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -8,78 +11,92 @@ import (
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 )
 
-// ParseSLTOutput parses key-value structured text emitted by `7z l -slt`.
-// Preserves deliberate leading/trailing whitespace in property values (e.g. filenames).
-func ParseSLTOutput(outStr, archivePath string) ([]domain.ArchiveItem, bool, error) {
-	lines := strings.Split(outStr, "\n")
-	var items []domain.ArchiveItem
+// ParseSLTReader stream-parses key-value structured text emitted by `7z l -slt` directly from an io.Reader.
+// It avoids allocating the full process output as a string in memory and processes lines with byte slices.
+func ParseSLTReader(r io.Reader, archivePath string) ([]domain.ArchiveItem, bool, error) {
+	reader := bufio.NewReaderSize(r, 64*1024)
+	baseArchive := filepath.Base(archivePath)
+
+	items := make([]domain.ArchiveItem, 0, 128)
 	var currentItem *domain.ArchiveItem
 	var isSolid bool
 
-	for _, line := range lines {
-		line = strings.TrimSuffix(line, "\r")
-		trimmedLine := strings.TrimSpace(line)
-		if trimmedLine == "" {
-			// Blank line signifies end of property block for current entry
-			if currentItem != nil {
-				items = append(items, *currentItem)
-				currentItem = nil
+	sep := []byte(" = ")
+	solidPrefix := []byte("Solid = ")
+	plusSign := []byte("+")
+
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			// Strip \r\n or \n
+			line = bytes.TrimRight(line, "\r\n")
+			trimmed := bytes.TrimSpace(line)
+
+			if len(trimmed) == 0 {
+				if currentItem != nil {
+					if currentItem.Path != "" && currentItem.Path != baseArchive {
+						items = append(items, *currentItem)
+					}
+					currentItem = nil
+				}
+			} else if bytes.HasPrefix(trimmed, solidPrefix) {
+				val := bytes.TrimSpace(trimmed[len(solidPrefix):])
+				isSolid = bytes.Equal(val, plusSign)
+			} else if keyBytes, valBytes, found := bytes.Cut(line, sep); found {
+				key := string(bytes.TrimSpace(keyBytes))
+				valStr := string(valBytes)
+
+				switch key {
+				case "Path":
+					if currentItem == nil {
+						currentItem = &domain.ArchiveItem{}
+					}
+					valStr = filepath.ToSlash(valStr)
+					if strings.HasSuffix(valStr, "/") || strings.HasSuffix(valStr, "\\") {
+						currentItem.IsDir = true
+						valStr = strings.TrimRight(valStr, "/\\")
+					}
+					currentItem.Path = valStr
+				case "Folder":
+					if currentItem != nil {
+						currentItem.IsDir = (strings.TrimSpace(valStr) == "+")
+					}
+				case "Attributes":
+					if currentItem != nil && strings.Contains(strings.ToUpper(valStr), "D") {
+						currentItem.IsDir = true
+					}
+				case "Size":
+					if currentItem != nil {
+						size, _ := strconv.ParseInt(strings.TrimSpace(valStr), 10, 64)
+						currentItem.Size = size
+					}
+				case "Modified":
+					if currentItem != nil {
+						currentItem.Modified = strings.TrimSpace(valStr)
+					}
+				}
 			}
-			continue
 		}
 
-		if strings.HasPrefix(trimmedLine, "Solid = ") {
-			isSolid = strings.TrimSpace(trimmedLine[len("Solid = "):]) == "+"
-		}
-
-		if parts := strings.SplitN(line, " = ", 2); len(parts) == 2 {
-			key := strings.TrimSpace(parts[0])
-			val := parts[1] // Retain exact spacing in value; only strip trailing carriage return
-
-			switch key {
-			case "Path":
-				if currentItem == nil {
-					currentItem = &domain.ArchiveItem{}
-				}
-				val = filepath.ToSlash(val)
-				if strings.HasSuffix(val, "/") || strings.HasSuffix(val, "\\") {
-					currentItem.IsDir = true
-					val = strings.TrimSuffix(strings.TrimSuffix(val, "/"), "\\")
-				}
-				currentItem.Path = val
-			case "Folder":
-				if currentItem != nil {
-					currentItem.IsDir = (strings.TrimSpace(val) == "+")
-				}
-			case "Attributes":
-				if currentItem != nil && strings.Contains(strings.ToUpper(val), "D") {
-					currentItem.IsDir = true
-				}
-			case "Size":
-				if currentItem != nil {
-					size, _ := strconv.ParseInt(strings.TrimSpace(val), 10, 64)
-					currentItem.Size = size
-				}
-			case "Modified":
-				if currentItem != nil {
-					currentItem.Modified = strings.TrimSpace(val)
-				}
+		if err != nil {
+			if err == io.EOF {
+				break
 			}
+			return nil, false, err
 		}
 	}
-	if currentItem != nil {
+
+	if currentItem != nil && currentItem.Path != "" && currentItem.Path != baseArchive {
 		items = append(items, *currentItem)
 	}
 
-	// Filter out top-level self-referential archive container entry if present
-	var filtered []domain.ArchiveItem
-	for _, it := range items {
-		if it.Path != "" && it.Path != filepath.Base(archivePath) {
-			filtered = append(filtered, it)
-		}
-	}
+	return items, isSolid, nil
+}
 
-	return filtered, isSolid, nil
+// ParseSLTOutput parses key-value structured text emitted by `7z l -slt`.
+// Kept for compatibility; wraps ParseSLTReader.
+func ParseSLTOutput(outStr, archivePath string) ([]domain.ArchiveItem, bool, error) {
+	return ParseSLTReader(strings.NewReader(outStr), archivePath)
 }
 
 // ParseHashesFromLog scans log outputs and isolates algorithm results.
