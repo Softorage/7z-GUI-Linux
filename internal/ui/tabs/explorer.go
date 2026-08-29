@@ -294,6 +294,10 @@ func BuildExplorerTab(w fyne.Window) fyne.CanvasObject {
 		explorerTabsStateMu.Lock()
 		if state, ok := explorerTabsState[tab]; ok {
 			state.cleanupTemp()
+			// Sever references so GC can reclaim large slices immediately
+			state.archiveItems = nil
+			state.items = nil
+			state.selectedItems = nil
 		}
 		delete(explorerTabsState, tab)
 		explorerTabsStateMu.Unlock()
@@ -630,7 +634,11 @@ func (state *explorerTabState) refresh(w fyne.Window) {
 
 			fyne.Do(func() {
 				state.items = virtualItems
-				state.selectedItems = make(map[string]bool)
+				if state.selectedItems == nil {
+					state.selectedItems = make(map[string]bool)
+				} else {
+					clear(state.selectedItems)
+				}
 				if state.cutBtn != nil {
 					if len(state.archiveStack) > 1 {
 						state.cutBtn.Disable()
@@ -667,7 +675,11 @@ func (state *explorerTabState) refresh(w fyne.Window) {
 			}
 			fyne.Do(func() {
 				state.items = localItems
-				state.selectedItems = make(map[string]bool)
+				if state.selectedItems == nil {
+					state.selectedItems = make(map[string]bool)
+				} else {
+					clear(state.selectedItems)
+				}
 				if state.cutBtn != nil {
 					state.cutBtn.Enable()
 				}
@@ -816,7 +828,7 @@ func addToClipboard(state *explorerTabState, op string) {
 		appstate.SetInfo(fmt.Sprintf("Selected item(s) already in clipboard as %s.", op))
 	}
 
-	state.selectedItems = make(map[string]bool)
+	clear(state.selectedItems)
 	if state.fileList != nil {
 		state.fileList.UnselectAll()
 		state.fileList.Refresh()
@@ -843,17 +855,18 @@ func resolveConflict(ctx *pasteContext, filename string) domain.ConflictAction {
 	}
 
 	action := components.PromptConflict(ctx.window, filename)
-	if action == domain.ActionCancel {
+	switch action {
+	case domain.ActionCancel:
 		ctx.cancelled = true
-	} else if action == domain.ActionReplaceAll {
+	case domain.ActionReplaceAll:
 		ctx.globalAction = domain.ActionReplace
 		ctx.hasGlobalAction = true
 		return domain.ActionReplace
-	} else if action == domain.ActionSkipAll {
+	case domain.ActionSkipAll:
 		ctx.globalAction = domain.ActionSkip
 		ctx.hasGlobalAction = true
 		return domain.ActionSkip
-	} else if action == domain.ActionRenameAll {
+	case domain.ActionRenameAll:
 		ctx.globalAction = domain.ActionRename
 		ctx.hasGlobalAction = true
 		return domain.ActionRename
@@ -1216,15 +1229,16 @@ func addFilesToArchive(archivePath, relPath, password string, items []domain.Cli
 					action = globalAction
 				} else {
 					action = components.PromptConflict(w, baseName)
-					if action == domain.ActionReplaceAll {
+					switch action {
+					case domain.ActionReplaceAll:
 						globalAction = domain.ActionReplace
 						hasGlobalAction = true
 						action = domain.ActionReplace
-					} else if action == domain.ActionSkipAll {
+					case domain.ActionSkipAll:
 						globalAction = domain.ActionSkip
 						hasGlobalAction = true
 						action = domain.ActionSkip
-					} else if action == domain.ActionCancel {
+					case domain.ActionCancel:
 						if extractDir != "" {
 							os.RemoveAll(extractDir)
 						}
@@ -1405,11 +1419,12 @@ func copyFileOrDir(ctx *pasteContext, src, dst string) error {
 				action = ctx.globalAction
 			} else {
 				action = components.PromptTypeConflict(ctx.window, filepath.Base(dst), info.IsDir(), dstInfo.IsDir())
-				if action == domain.ActionRenameAll {
+				switch action {
+				case domain.ActionRenameAll:
 					ctx.globalAction = domain.ActionRename
 					ctx.hasGlobalAction = true
 					action = domain.ActionRename
-				} else if action == domain.ActionSkipAll {
+				case domain.ActionSkipAll:
 					ctx.globalAction = domain.ActionSkip
 					ctx.hasGlobalAction = true
 					action = domain.ActionSkip
@@ -1446,11 +1461,12 @@ func copyFileOrDir(ctx *pasteContext, src, dst string) error {
 		if action == domain.ActionCancel {
 			return fmt.Errorf("cancelled by user")
 		}
-		if action == domain.ActionRename {
+		switch action {
+		case domain.ActionRename:
 			dst = sys.GetUniqueDstPath(dst, ctx.usedNames)
 			ctx.usedNames[filepath.Base(dst)] = true
 			dstExists = false
-		} else if action == domain.ActionReplace {
+		case domain.ActionReplace:
 			if isTypeConflict {
 				// Permanently delete the conflicting mismatched path
 				_ = os.RemoveAll(dst)
