@@ -1,10 +1,9 @@
 package sys
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
@@ -12,23 +11,37 @@ import (
 
 // Helper for Memory & System Storage
 
+// parseMeminfoValue parses an unsigned integer in KiB from lines starting with the prefix without string allocations.
+func parseMeminfoValue(data []byte, prefix []byte) (uint64, bool) {
+	idx := bytes.Index(data, prefix)
+	if idx == -1 {
+		return 0, false
+	}
+	rest := data[idx+len(prefix):]
+	var val uint64
+	var foundDigits bool
+	for _, b := range rest {
+		if b >= '0' && b <= '9' {
+			val = val*10 + uint64(b-'0')
+			foundDigits = true
+		} else if foundDigits {
+			break
+		}
+	}
+	if foundDigits {
+		return val * 1024, true // KiB to bytes
+	}
+	return 0, false
+}
+
 // GetTotalRAMBytes reads Linux `/proc/meminfo` to calculate total system RAM.
 func GetTotalRAMBytes() uint64 {
 	data, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
 		return 0
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "MemTotal:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				if val, err := strconv.ParseUint(fields[1], 10, 64); err == nil {
-					return val * 1024 // KiB to bytes
-				}
-			}
-		}
-	}
-	return 0
+	val, _ := parseMeminfoValue(data, []byte("MemTotal:"))
+	return val
 }
 
 // GetAvailableRAMBytes reads Linux `/proc/meminfo` to calculate available system RAM.
@@ -37,15 +50,8 @@ func GetAvailableRAMBytes() uint64 {
 	if err != nil {
 		return 2 * 1024 * 1024 * 1024 // 2GB fallback
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "MemAvailable:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				if val, err := strconv.ParseUint(fields[1], 10, 64); err == nil {
-					return val * 1024 // KiB to bytes
-				}
-			}
-		}
+	if val, ok := parseMeminfoValue(data, []byte("MemAvailable:")); ok {
+		return val
 	}
 	return 2 * 1024 * 1024 * 1024
 }
