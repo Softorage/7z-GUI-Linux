@@ -85,7 +85,6 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	// Format Select
 	formatSelect := widget.NewSelect([]string{"7z", "xz", "bzip2", "gzip", "tar", "zip", "wim"}, nil)
-//	formatSelect.SetSelected("7z")
 	if initialCfg.DefaultFormat != "" {
 		formatSelect.SetSelected(initialCfg.DefaultFormat)
 	} else {
@@ -421,7 +420,6 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	// Update Mode
 	updateSelect := widget.NewSelect([]string{"Add and replace files", "Update and add files", "Freshen existing files", "Synchronize files"}, nil)
 	updateSelect.SetSelected("Add and replace files")
-	
 
 	sfxCheck.OnChanged = func(_ bool) {
 		appstate.SetInfo("SFX: Creates a self-extracting executable in .exe format.")
@@ -436,7 +434,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	// Split
 	splitEntry := widget.NewEntry()
 	splitEntry.PlaceHolder = "e.g., 10M, 100M, 2G"
-	
+
 	// Encryption Options
 	encCheck := widget.NewCheck("Enable Encryption", nil)
 	passEntry := widget.NewPasswordEntry()
@@ -483,7 +481,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	dictSelect.OnChanged = func(_ string) {
 		saveCompressConfig()
- 	}
+	}
 
 	wordSelect.OnChanged = func(_ string) {
 		appstate.SetInfo("Word size (fast bytes) determines the length of patterns to match; increasing it can improve compression on structured files but slows down compression speed.")

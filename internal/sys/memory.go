@@ -95,7 +95,7 @@ func SelectTempStorage(requiredBytes uint64, ramPercent int, ramLimitMB int64) (
 				return dir, true
 			}
 		}
-		
+
 		if IsTmpfs("/tmp") && GetPathAvailableBytes("/tmp") >= requiredBytes {
 			if dir, err := os.MkdirTemp("/tmp", "7gl-ram-*"); err == nil {
 				return dir, true

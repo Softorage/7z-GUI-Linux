@@ -207,7 +207,7 @@ func BuildSettingsTab(w fyne.Window, a fyne.App) fyne.CanvasObject {
 	)
 
 	// Section: Clipboard & Storage
-	clearClipboardCheck := widget.NewCheck("Clear custom clipboard after successful paste", func(checked bool) {
+	clearClipboardCheck := widget.NewCheck("Clear 7GL's clipboard after successful paste", func(checked bool) {
 		appstate.SetClipboardClearOnSuccess(checked)
 		if checked {
 			appstate.SetInfo("Clipboard auto-clear enabled.")
@@ -257,7 +257,7 @@ func BuildSettingsTab(w fyne.Window, a fyne.App) fyne.CanvasObject {
 		widget.NewLabel(""),
 		clipboardSection,
 		widget.NewLabel(""),
-    writeLocationsSection,
+		writeLocationsSection,
 	)
 
 	return container.NewPadded(container.NewBorder(

@@ -2,10 +2,10 @@ package app
 
 import (
 	"fmt"
+	"github.com/spf13/viper"
 	"os"
 	"path/filepath"
 	"sync"
-	"github.com/spf13/viper"
 
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 )

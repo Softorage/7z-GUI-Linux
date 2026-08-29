@@ -18,7 +18,7 @@ const (
 // CompressionConfig holds default options for compression operations.
 type CompressionConfig struct {
 	DefaultFormat          string `mapstructure:"default_format" json:"default_format" yaml:"default_format"`
-	DefaultLevel           string    `mapstructure:"default_level" json:"default_level" yaml:"default_level"`
+	DefaultLevel           string `mapstructure:"default_level" json:"default_level" yaml:"default_level"`
 	DefaultMethod          string `mapstructure:"default_method" json:"default_method" yaml:"default_method"`
 	DictionarySize         string `mapstructure:"dictionary_size" json:"dictionary_size" yaml:"dictionary_size"`
 	WordSize               string `mapstructure:"word_size" json:"word_size" yaml:"word_size"`
@@ -36,9 +36,9 @@ type UpdateConfig struct {
 
 // SystemConfig manages RAM limits, clipboard behavior, and temporary workspace staging.
 type SystemConfig struct {
-	RAMUsagePercent         int    `mapstructure:"ram_usage_percent" json:"ram_usage_percent" yaml:"ram_usage_percent"`
-	RAMLimitMB              int64  `mapstructure:"ram_limit_mb" json:"ram_limit_mb" yaml:"ram_limit_mb"`
-	ClipboardClearOnSuccess bool   `mapstructure:"clipboard_clear_on_success" json:"clipboard_clear_on_success" yaml:"clipboard_clear_on_success"`
+	RAMUsagePercent         int   `mapstructure:"ram_usage_percent" json:"ram_usage_percent" yaml:"ram_usage_percent"`
+	RAMLimitMB              int64 `mapstructure:"ram_limit_mb" json:"ram_limit_mb" yaml:"ram_limit_mb"`
+	ClipboardClearOnSuccess bool  `mapstructure:"clipboard_clear_on_success" json:"clipboard_clear_on_success" yaml:"clipboard_clear_on_success"`
 }
 
 // AppConfig holds all application user configuration preferences for 7GL.

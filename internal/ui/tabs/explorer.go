@@ -866,7 +866,7 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 	appstate.ClipboardMu.Lock()
 	if len(appstate.GlobalClipboard) == 0 {
 		appstate.ClipboardMu.Unlock()
-		dialog.ShowInformation("Clipboard Empty", "No items are currently in your custom clipboard.", w)
+		dialog.ShowInformation("Clipboard Empty", "No items are currently in 7GL's clipboard.", w)
 		return
 	}
 	itemsCopy := make([]domain.ClipboardItem, len(appstate.GlobalClipboard))
@@ -1605,7 +1605,7 @@ func showClipboardDialog(w fyne.Window) {
 		nil, nil, list,
 	)
 
-	d := dialog.NewCustom("Custom Clipboard", "Close", content, w)
+	d := dialog.NewCustom("7GL Clipboard", "Close", content, w)
 	d.Resize(fyne.NewSize(600, 400))
 	d.Show()
 }
