@@ -76,7 +76,10 @@ func StartOperation(target string, args []string, mode string, workingDir string
 		Timestamp: time.Now().Format("15:04:05"),
 	}
 	appstate.HistoryData = append([]domain.OperationLog{logEntry}, appstate.HistoryData...) // Prepend to show newest first
-	entryIndex := 0                                                // Since we prepend, it's always at the top
+	if len(appstate.HistoryData) > appstate.MaxHistoryRecords {
+		appstate.HistoryData = appstate.HistoryData[:appstate.MaxHistoryRecords]
+	}
+	entryIndex := 0 // Since we prepend, it's always at the top
 	appstate.StateMu.Unlock()
 
 	fyne.Do(func() {
@@ -131,6 +134,7 @@ func StartOperation(target string, args []string, mode string, workingDir string
 	}
 	appstate.LogLines = append(appstate.LogLines, "========================================", commandStr)
 	appstate.CurrentLogLine = appstate.CurrentLogLine[:0]
+	appstate.LogGeneration++
 	appstate.LogMu.Unlock()
 	UpdateConsoleLog(GetFullLogText())
 
@@ -182,11 +186,11 @@ func StartOperation(target string, args []string, mode string, workingDir string
 
 	// Stderr Reader Routine
 	go func() {
-		buf := make([]byte, 1)
+		buf := make([]byte, 4096)
 		for {
 			n, err := stderr.Read(buf)
 			if n > 0 {
-				ProcessLogByte(buf[0])
+				ProcessLogChunk(buf[:n])
 			}
 			if err != nil {
 				break
@@ -205,8 +209,15 @@ func StartOperation(target string, args []string, mode string, workingDir string
 				paused := appstate.IsPaused
 				appstate.StateMu.RUnlock()
 
-				// Update the UI Log
-				UpdateConsoleLog(GetFullLogText())
+				// Only re-generate strings and update UI if log changed
+				appstate.LogMu.Lock()
+				gen := appstate.LogGeneration
+				appstate.LogMu.Unlock()
+
+				if gen != appstate.LastRenderedGen {
+					appstate.LastRenderedGen = gen
+					UpdateConsoleLog(GetFullLogText())
+				}
 
 				if !running {
 					return
@@ -255,13 +266,13 @@ func StartOperation(target string, args []string, mode string, workingDir string
 	go func() {
 		defer ticker.Stop()
 		defer close(doneChan) // Terminate UI update ticker routine safely
-		buf := make([]byte, 1)
+		buf := make([]byte, 4096)
 
 		// 7-zip relies heavily on \b (backspaces) and \r to rewrite lines visually.
 		for {
 			n, readErr := stdout.Read(buf)
 			if n > 0 {
-				ProcessLogByte(buf[0])
+				ProcessLogChunk(buf[:n])
 			}
 			if readErr != nil {
 				break
@@ -335,33 +346,52 @@ func StartOperation(target string, args []string, mode string, workingDir string
 	}()
 }
 
-// processLogByte builds the console log stream exactly as a terminal does
-func ProcessLogByte(b byte) {
+// ProcessLogChunk processes raw output bytes in chunks under a single lock acquisition,
+// enforcing strict line-count and line-length limits to prevent memory bloat.
+func ProcessLogChunk(chunk []byte) {
 	appstate.LogMu.Lock()
 	defer appstate.LogMu.Unlock()
 
-	switch b {
-	case '\n': // New line
-		appstate.LogLines = append(appstate.LogLines, string(appstate.CurrentLogLine))
-		appstate.CurrentLogLine = appstate.CurrentLogLine[:0]
-		appstate.LogCursor = 0 // Reset cursor for the new line
-	case '\r': // Carriage return
-		// Instead of clearing the slice (which causes UI flickering),
-		// we just move the cursor back to the start.
-		// Upcoming characters will overwrite the existing ones.
-		appstate.LogCursor = 0 // Return to beginning of line (7-Zip progress bars use this)
-	case '\b': // Backspace
-		if appstate.LogCursor > 0 {
-			appstate.LogCursor--
+	for _, b := range chunk {
+		switch b {
+		case '\n':
+			appstate.LogLines = append(appstate.LogLines, string(appstate.CurrentLogLine))
+			appstate.CurrentLogLine = appstate.CurrentLogLine[:0]
+			appstate.LogCursor = 0 // Reset cursor for the new line
+
+			// Evict oldest lines in batches if maximum line threshold exceeded
+			if len(appstate.LogLines) > appstate.MaxLogLines+appstate.LogBatchTrimSize {
+				keepFrom := len(appstate.LogLines) - appstate.MaxLogLines
+				trimmed := make([]string, appstate.MaxLogLines)
+				copy(trimmed, appstate.LogLines[keepFrom:])
+				appstate.LogLines = trimmed
+			}
+		case '\r': // Carriage return
+			// Instead of clearing the slice (which causes UI flickering),
+			// we just move the cursor back to the start.
+			// Upcoming characters will overwrite the existing ones.
+			appstate.LogCursor = 0 // Return to beginning of line (7-Zip progress bars use this)
+		case '\b': // Backspace
+			if appstate.LogCursor > 0 {
+				appstate.LogCursor--
+			}
+		default: // Standard character
+			if appstate.LogCursor < len(appstate.CurrentLogLine) {
+				appstate.CurrentLogLine[appstate.LogCursor] = b
+			} else if len(appstate.CurrentLogLine) < appstate.MaxLogLineLength {
+				appstate.CurrentLogLine = append(appstate.CurrentLogLine, b)
+			}
+			if appstate.LogCursor < appstate.MaxLogLineLength {
+				appstate.LogCursor++
+			}
 		}
-	default: // Standard character
-		if appstate.LogCursor < len(appstate.CurrentLogLine) {
-			appstate.CurrentLogLine[appstate.LogCursor] = b
-		} else {
-			appstate.CurrentLogLine = append(appstate.CurrentLogLine, b)
-		}
-		appstate.LogCursor++
 	}
+	appstate.LogGeneration++
+}
+
+// processLogByte builds the console log stream exactly as a terminal does
+func ProcessLogByte(b byte) {
+	ProcessLogChunk([]byte{b})
 }
 
 // getLogLines returns a thread-safe copy of all completed log lines plus the active line.

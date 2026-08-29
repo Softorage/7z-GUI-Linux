@@ -12,6 +12,13 @@ import (
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 )
 
+const (
+	MaxLogLines       = 1000
+	LogBatchTrimSize  = 200
+	MaxLogLineLength  = 4096
+	MaxHistoryRecords = 100
+)
+
 var (
 	InfoBar     *widget.Label
 	Tabs        *widget.List
@@ -38,13 +45,15 @@ var (
 	HistoryList *widget.List
 
 	// Console Log State
-	LogMu          sync.Mutex
-	LogLines       []string
-	CurrentLogLine []byte
-	LogCursor      int
-	ConsoleLog     *widget.Entry
-	LastLogText    string
-	LogTextMu      sync.Mutex
+	LogMu           sync.Mutex
+	LogLines        []string
+	CurrentLogLine  []byte
+	LogCursor       int
+	ConsoleLog      *widget.Entry
+	LastLogText     string
+	LogTextMu       sync.Mutex
+	LogGeneration   uint64
+	LastRenderedGen uint64
 
 	CurrentCancel context.CancelFunc
 	CancelMu      sync.Mutex
