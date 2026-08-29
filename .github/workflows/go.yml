@@ -192,7 +192,7 @@ jobs:
             chmod +x "${STAGING_DIR}/7zzs"
 
             echo "Create Archive"
-            TAR_NAME="${NAME}-${server}-${arch}-${{ env.GIT_TAG }}.tar.xz"
+            TAR_NAME="${NAME}-${server}-${arch}.tar.xz"
             echo "Compressing to ${TAR_NAME}..."
             tar -cJf "./public/${TAR_NAME}" -C "${STAGING_DIR}" .
             sha256sum "./public/${TAR_NAME}" > "./public/${TAR_NAME}.sha256"
@@ -236,7 +236,7 @@ jobs:
       with:
         draft: true
         body: >-
-          Thank you for using this tool!  
+          Thank you for using 7GL!  
             
           **Installation:**  
           
