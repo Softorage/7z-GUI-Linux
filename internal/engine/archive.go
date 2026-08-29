@@ -1,11 +1,13 @@
 package engine
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
@@ -118,11 +120,18 @@ func ExtractArchiveItems(items []domain.ClipboardItem) (map[string]string, strin
 // ListArchive retrieves detailed metadata from an archive using 7-Zip's SLT flag `-slt`.
 // Streams stdout directly to ParseSLTReader to avoid buffering hundreds of megabytes in heap.
 func ListArchive(archivePath, password string) ([]domain.ArchiveItem, bool, error) {
+	var (
+		stdout   io.Reader
+		waitFunc func() error
+	)
+
 	if sys.IsTarballExtension(archivePath) {
-		args1 := []string{"x", archivePath, "-so", "-bso0", "-bsp0"}
+		args1 := make([]string, 0, 6)
+		args1 = append(args1, "x", archivePath, "-so", "-bso0", "-bsp0")
 		if password != "" {
 			args1 = append(args1, "-p"+password)
 		}
+
 		cmd1 := exec.Command(Root7zCmd, args1...)
 		cmd1.Stdin = strings.NewReader("")
 		cmd2 := exec.Command(Root7zCmd, "l", "-si", "-ttar", "-slt")
@@ -133,49 +142,80 @@ func ListArchive(archivePath, password string) ([]domain.ArchiveItem, bool, erro
 
 		stdout2, err := cmd2.StdoutPipe()
 		if err != nil {
-			pr.Close()
-			pw.Close()
+			_ = pr.Close()
+			_ = pw.Close()
 			return nil, false, fmt.Errorf("failed to create stdout pipe: %w", err)
 		}
 
-		if err1 := cmd1.Start(); err1 == nil && cmd2.Start() == nil {
-			go func() {
-				_ = cmd1.Wait()
-				_ = pw.Close()
-			}()
-			items, isSolid, parseErr := ParseSLTReader(stdout2, archivePath)
-			_ = cmd2.Wait()
-			_ = pr.Close()
-			if parseErr != nil {
-				return nil, false, fmt.Errorf("failed to parse tarball archive contents: %w", parseErr)
-			}
-			return items, isSolid, nil
-		} else {
+		// Start cmd1 safely
+		if err := cmd1.Start(); err != nil {
 			_ = pr.Close()
 			_ = pw.Close()
-			return nil, false, fmt.Errorf("failed to start tarball decompression pipeline")
+			return nil, false, fmt.Errorf("failed to start tarball extractor: %w", err)
 		}
+
+		// Start cmd2 safely (kill cmd1 if cmd2 fails to prevent orphaned zombie process)
+		if err := cmd2.Start(); err != nil {
+			_ = cmd1.Process.Kill()
+			_ = cmd1.Wait()
+			_ = pr.Close()
+			_ = pw.Close()
+			return nil, false, fmt.Errorf("failed to start tarball lister: %w", err)
+		}
+
+		// Pump/close pipeline in background
+		go func() {
+			_ = cmd1.Wait()
+			_ = pw.Close()
+		}()
+
+		stdout = stdout2
+		waitFunc = func() error {
+			_ = pr.Close()
+			// Ensure cmd1 is killed if ParseSLTReader exited early without reading everything
+			if cmd1.Process != nil {
+				_ = cmd1.Process.Kill()
+			}
+			return cmd2.Wait()
+		}
+	} else {
+		args := make([]string, 0, 4)
+		args = append(args, "l", "-slt", archivePath)
+		if password != "" {
+			args = append(args, "-p"+password)
+		}
+
+		cmd := exec.Command(Root7zCmd, args...)
+		cmd.Stdin = strings.NewReader("")
+
+		stdoutPipe, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		if err := cmd.Start(); err != nil {
+			return nil, false, fmt.Errorf("failed to start 7z command: %w", err)
+		}
+
+		stdout = stdoutPipe
+		waitFunc = cmd.Wait
 	}
 
-	args := []string{"l", "-slt", archivePath}
-	if password != "" {
-		args = append(args, "-p"+password)
-	}
-	cmd := exec.Command(Root7zCmd, args...)
-	cmd.Stdin = strings.NewReader("")
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, false, err
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, false, err
-	}
-
+	// Stream parsing directly from child process stdout
 	items, isSolid, parseErr := ParseSLTReader(stdout, archivePath)
-	_ = cmd.Wait()
+	waitErr := waitFunc()
+
 	if parseErr != nil {
 		return nil, false, parseErr
 	}
+	if waitErr != nil {
+		return nil, false, fmt.Errorf("7-Zip command failed: %w", waitErr)
+	}
+
+	// Generic, zero-allocation inlined sort
+	slices.SortFunc(items, func(a, b domain.ArchiveItem) int {
+		return cmp.Compare(a.Path, b.Path)
+	})
+
 	return items, isSolid, nil
 }
 

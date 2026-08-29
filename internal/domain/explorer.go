@@ -58,6 +58,8 @@ type ArchiveLevel struct {
 	ArchiveRelPath  string // Current directory level within this archive
 	ArchivePassword string
 	TempDir         string // Temporary directory managing extracted files for this level
+	IsRAM           bool   // Whether this level is staged in RAM (tmpfs)
+	AllocatedBytes  uint64 // Memory bytes reserved against the global staging quota
 }
 
 // ClipboardItem holds details about items copied or cut in the app's custom clipboard,

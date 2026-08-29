@@ -86,10 +86,10 @@ func (state *explorerTabState) getDisplayArchivePath() string {
 	return strings.Join(parts, " :: ") + " :: " + rel
 }
 
-// cleanupTempLevel deletes the level's temporary directory unless it is pinned in the clipboard.
+// cleanupTempLevel deletes the level's temporary directory and frees quota unless pinned in the clipboard.
 func cleanupTempLevel(lvl domain.ArchiveLevel) {
 	if lvl.TempDir != "" && !appstate.IsTempDirPinned(lvl.TempDir) {
-		_ = os.RemoveAll(lvl.TempDir)
+		sys.ReleaseTempStorage(lvl.TempDir, lvl.IsRAM, lvl.AllocatedBytes)
 	}
 }
 
@@ -101,7 +101,7 @@ func (state *explorerTabState) cleanupTemp() {
 		if appstate.IsTempDirPinned(lvl.TempDir) {
 			remainingStack = append(remainingStack, lvl)
 		} else if lvl.TempDir != "" {
-			_ = os.RemoveAll(lvl.TempDir)
+			sys.ReleaseTempStorage(lvl.TempDir, lvl.IsRAM, lvl.AllocatedBytes)
 		}
 	}
 	state.archiveStack = remainingStack
@@ -537,20 +537,20 @@ func openArchiveLevel(w fyne.Window, state *explorerTabState, item domain.FileSy
 			ramLimitMB := appstate.UserConfig.System.RAMLimitMB
 			appstate.UserConfigMu.RUnlock()
 
-			tempDir, isRAM := sys.SelectTempStorage(uncompressedSize, ramPercent, ramLimitMB)
+			tempDir, isRAM, allocatedBytes := sys.SelectTempStorage(uncompressedSize, ramPercent, ramLimitMB)
 			if isRAM {
 				appstate.SetInfo(fmt.Sprintf("Extracting %s to RAM (tmpfs)...", item.Name))
 			}
 
 			if err := engine.ExtractArchive(state.archivePath, tempDir, state.archivePassword, item.Path); err != nil {
-				os.RemoveAll(tempDir)
+				sys.ReleaseTempStorage(tempDir, isRAM, allocatedBytes)
 				fyne.Do(func() { dialog.ShowError(fmt.Errorf("failed to extract nested archive: %v", err), w) })
 				return
 			}
 
 			extractedPath := filepath.Join(tempDir, filepath.FromSlash(item.Path))
 			if _, err := os.Stat(extractedPath); err != nil {
-				os.RemoveAll(tempDir)
+				sys.ReleaseTempStorage(tempDir, isRAM, allocatedBytes)
 				fyne.Do(func() { dialog.ShowError(fmt.Errorf("nested archive file not found after extraction: %v", err), w) })
 				return
 			}
@@ -563,6 +563,8 @@ func openArchiveLevel(w fyne.Window, state *explorerTabState, item domain.FileSy
 					ArchiveRelPath:  "",
 					ArchivePassword: pwd,
 					TempDir:         tempDir,
+					IsRAM:           isRAM,
+					AllocatedBytes:  allocatedBytes,
 				}
 				state.archiveStack = append(state.archiveStack, lvl)
 				state.isArchive = true
@@ -575,7 +577,7 @@ func openArchiveLevel(w fyne.Window, state *explorerTabState, item domain.FileSy
 			if protected {
 				fyne.Do(func() {
 					components.PromptArchivePassword(w, extractedPath, "Open", openNested, func() {
-						os.RemoveAll(tempDir)
+						sys.ReleaseTempStorage(tempDir, isRAM, allocatedBytes)
 						appstate.SetInfo("Opening password-protected archive cancelled.")
 					})
 				})

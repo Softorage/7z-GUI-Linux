@@ -1,11 +1,13 @@
 package sys
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
@@ -105,18 +107,34 @@ func GetLocalItems(dirPath string, showHidden bool) ([]domain.FileSystemItem, er
 	if err != nil {
 		return nil, err
 	}
-	var dirs, files []domain.FileSystemItem
+
+	numEntries := len(entries)
+	// Pre-allocating dirs with capacity = numEntries guarantees that
+	// `append(dirs, files...)` at the end never triggers a heap reallocation.
+	dirs := make([]domain.FileSystemItem, 0, numEntries)
+	files := make([]domain.FileSystemItem, 0, numEntries)
+
+	// Pre-normalize base directory prefix once to avoid calling filepath.Join / filepath.Clean
+	// on every entry inside the loop.
+	baseDir := filepath.Clean(dirPath)
+	if baseDir == "." {
+		baseDir = ""
+	} else if !os.IsPathSeparator(baseDir[len(baseDir)-1]) {
+		baseDir += string(filepath.Separator)
+	}
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if !showHidden && strings.HasPrefix(name, ".") {
+		// Fast direct byte check instead of calling strings.HasPrefix
+		if !showHidden && len(name) > 0 && name[0] == '.' {
 			continue
 		}
-		fullPath := filepath.Join(dirPath, name)
-		info, err := entry.Info()
+
+		fullPath := baseDir + name
+
 		size := int64(0)
 		modified := ""
-		if err == nil {
+		if info, err := entry.Info(); err == nil {
 			size = info.Size()
 			modified = info.ModTime().Format("2006-01-02 15:04:05")
 		}
@@ -146,91 +164,126 @@ func GetLocalItems(dirPath string, showHidden bool) ([]domain.FileSystemItem, er
 		}
 	}
 
-	sort.Slice(dirs, func(i, j int) bool { return strings.ToLower(dirs[i].Name) < strings.ToLower(dirs[j].Name) })
-	sort.Slice(files, func(i, j int) bool { return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name) })
+	// Zero-allocation, reflection-free case-insensitive sort with tie-breaker
+	caseInsensitiveSort := func(a, b domain.FileSystemItem) int {
+		if c := compareFold(a.Name, b.Name); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Name, b.Name)
+	}
+
+	slices.SortFunc(dirs, caseInsensitiveSort)
+	slices.SortFunc(files, caseInsensitiveSort)
 
 	return append(dirs, files...), nil
 }
 
-// GetVirtualItems maps raw flat archive entry paths into a virtual folder hierarchy corresponding to currentRelPath level.
+// GetVirtualItems maps raw flat archive entry paths into a virtual folder hierarchy corresponding to currentRelPath level
+// using an allocation-free single scan on sorted archive items without intermediate map allocations.
+// PRECONDITION: `all` MUST be pre-sorted lexicographically by Path.
 func GetVirtualItems(all []domain.ArchiveItem, currentRelPath string) []domain.FileSystemItem {
 	prefix := ""
 	if currentRelPath != "" {
-		prefix = currentRelPath
-		if !strings.HasSuffix(prefix, "/") {
+		prefix = path.Clean(currentRelPath)
+		if prefix == "." || prefix == "/" {
+			prefix = ""
+		} else if !strings.HasSuffix(prefix, "/") {
 			prefix += "/"
 		}
 	}
 
-	type tempItem struct {
-		isDir    bool
-		size     int64
-		modified string
-		path     string
-	}
+	dirs := make([]domain.FileSystemItem, 0, 16)
+	files := make([]domain.FileSystemItem, 0, 32)
 
-	merged := make(map[string]tempItem)
+	lastDir := ""
+	lastFile := ""
 
-	for _, item := range all {
-		path := item.Path
-		if prefix != "" && !strings.HasPrefix(path, prefix) {
+	for i := range all {
+		itemPath := all[i].Path
+		if prefix != "" && !strings.HasPrefix(itemPath, prefix) {
 			continue
 		}
 
-		rel := strings.TrimPrefix(path, prefix)
+		rel := strings.TrimPrefix(itemPath, prefix)
 		if rel == "" {
 			continue
 		}
 
-		isDir := item.IsDir || strings.HasSuffix(path, "/")
-		trimmedRel := strings.TrimSuffix(rel, "/")
-		if trimmedRel == "" {
-			continue
-		}
-
-		parts := strings.Split(trimmedRel, "/")
-		name := parts[0]
-		if name == "" {
-			continue
-		}
-
-		if len(parts) > 1 {
-			// Sub-path element implies directory container at current level
-			existing, exists := merged[name]
-			if !exists || !existing.isDir {
-				merged[name] = tempItem{isDir: true, size: 0, modified: item.Modified, path: prefix + name}
+		if before, _, ok := strings.Cut(rel, "/"); ok {
+			// Sub-directory element
+			if before == "" || before == lastDir {
+				continue
 			}
+			lastDir = before
+			dirs = append(dirs, domain.FileSystemItem{
+				Name:     before,
+				Path:     prefix + before,
+				IsDir:    true,
+				Size:     0,
+				Modified: all[i].Modified,
+			})
+		} else if all[i].IsDir {
+			// Direct directory entry
+			if rel == lastDir {
+				continue
+			}
+			lastDir = rel
+			dirs = append(dirs, domain.FileSystemItem{
+				Name:     rel,
+				Path:     prefix + rel,
+				IsDir:    true,
+				Size:     0,
+				Modified: all[i].Modified,
+			})
 		} else {
-			if isDir {
-				merged[name] = tempItem{isDir: true, size: 0, modified: item.Modified, path: prefix + name}
-			} else {
-				if _, exists := merged[name]; !exists {
-					merged[name] = tempItem{isDir: false, size: item.Size, modified: item.Modified, path: item.Path}
-				}
+			// Direct file entry
+			if rel == lastFile {
+				continue
 			}
+			lastFile = rel
+			files = append(files, domain.FileSystemItem{
+				Name:     rel,
+				Path:     all[i].Path,
+				IsDir:    false,
+				Size:     all[i].Size,
+				Modified: all[i].Modified,
+			})
 		}
 	}
 
-	var dirs, files []domain.FileSystemItem
-	for name, info := range merged {
-		fItem := domain.FileSystemItem{
-			Name:     name,
-			Path:     info.path,
-			IsDir:    info.isDir,
-			Size:     info.size,
-			Modified: info.modified,
+	// Zero-allocation, reflection-free case-insensitive sort with tie-breaker
+	caseInsensitiveSort := func(a, b domain.FileSystemItem) int {
+		if c := compareFold(a.Name, b.Name); c != 0 {
+			return c
 		}
-		if info.isDir {
-			dirs = append(dirs, fItem)
-		} else {
-			files = append(files, fItem)
-		}
+		// Exact case tie-breaker (stable order for Linux case-sensitive entries)
+		return cmp.Compare(a.Name, b.Name)
 	}
 
-	sort.Slice(dirs, func(i, j int) bool { return strings.ToLower(dirs[i].Name) < strings.ToLower(dirs[j].Name) })
-	sort.Slice(files, func(i, j int) bool { return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name) })
+	slices.SortFunc(dirs, caseInsensitiveSort)
+	slices.SortFunc(files, caseInsensitiveSort)
 
 	return append(dirs, files...)
+}
+
+// compareFold compares two ASCII/UTF-8 strings case-insensitively without heap allocation.
+func compareFold(s1, s2 string) int {
+	for len(s1) > 0 && len(s2) > 0 {
+		c1, c2 := s1[0], s2[0]
+		// Fast-path ASCII lowercasing inline
+		if 'A' <= c1 && c1 <= 'Z' {
+			c1 += 'a' - 'A'
+		}
+		if 'A' <= c2 && c2 <= 'Z' {
+			c2 += 'a' - 'A'
+		}
+		if c1 != c2 {
+			return cmp.Compare(c1, c2)
+		}
+		s1 = s1[1:]
+		s2 = s2[1:]
+	}
+	return cmp.Compare(len(s1), len(s2))
 }
 
 // CopyFile copies standard file bytes from src to dst.

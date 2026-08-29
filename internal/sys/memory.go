@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 )
+
+// Global active RAM staging quota tracking across all open archive tabs
+var activeRAMStagingBytes atomic.Uint64
 
 // Helper for Memory & System Storage
 
@@ -72,8 +76,8 @@ func IsTmpfs(path string) bool {
 }
 
 // SelectTempStorage decides whether to stage uncompressed files in RAM (tmpfs) or disk storage.
-// Dynamically scales RAM budget according to configured percentage of available memory and hard limit cap.
-func SelectTempStorage(requiredBytes uint64, ramPercent int, ramLimitMB int64) (string, bool) {
+// strictly bounded by available system RAM, user preferences, and global active staging quotas.
+func SelectTempStorage(requiredBytes uint64, ramPercent int, ramLimitMB int64) (string, bool, uint64) {
 	if ramPercent <= 0 {
 		ramPercent = domain.DefaultRAMPercent
 	}
@@ -94,17 +98,20 @@ func SelectTempStorage(requiredBytes uint64, ramPercent int, ramLimitMB int64) (
 		ramBudget = maxRAMBudget
 	}
 
-	// Stage in RAM (tmpfs) only if requiredBytes fits within calculated budget and mount capacity
-	if requiredBytes <= ramBudget {
-		if IsTmpfs("/dev/shm") && GetPathAvailableBytes("/dev/shm") >= requiredBytes {
+	// Verify that aggregate RAM staging across all open tabs remains within the budget
+	currentActive := activeRAMStagingBytes.Load()
+	if currentActive+requiredBytes <= ramBudget {
+		if IsTmpfs("/dev/shm") && GetPathAvailableBytes("/dev/shm") >= requiredBytes*2 {
 			if dir, err := os.MkdirTemp("/dev/shm", "7gl-ram-*"); err == nil {
-				return dir, true
+				activeRAMStagingBytes.Add(requiredBytes)
+				return dir, true, requiredBytes
 			}
 		}
 
-		if IsTmpfs("/tmp") && GetPathAvailableBytes("/tmp") >= requiredBytes {
+		if IsTmpfs("/tmp") && GetPathAvailableBytes("/tmp") >= requiredBytes*2 {
 			if dir, err := os.MkdirTemp("/tmp", "7gl-ram-*"); err == nil {
-				return dir, true
+				activeRAMStagingBytes.Add(requiredBytes)
+				return dir, true, requiredBytes
 			}
 		}
 	}
@@ -117,5 +124,15 @@ func SelectTempStorage(requiredBytes uint64, ramPercent int, ramLimitMB int64) (
 	if err != nil {
 		dir, _ = os.MkdirTemp("", "7gl-disk-*")
 	}
-	return dir, false
+	return dir, false, 0
+}
+
+// ReleaseTempStorage removes the temporary workspace and decrements any active RAM staging quota.
+func ReleaseTempStorage(dir string, isRAM bool, allocatedBytes uint64) {
+	if dir != "" {
+		_ = os.RemoveAll(dir)
+	}
+	if isRAM && allocatedBytes > 0 {
+		activeRAMStagingBytes.Add(^uint64(allocatedBytes - 1)) // Atomic subtraction
+	}
 }
