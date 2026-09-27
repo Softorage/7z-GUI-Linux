@@ -14,14 +14,16 @@ import (
 // ParseSLTReader stream-parses key-value structured text emitted by `7z l -slt` directly from an io.Reader.
 // It avoids allocating the full process output as a string in memory and processes lines with byte slices.
 func ParseSLTReader(r io.Reader, archivePath string) ([]domain.ArchiveItem, bool, error) {
+	_ = archivePath
 	reader := bufio.NewReaderSize(r, 64*1024)
-	baseArchive := filepath.Base(archivePath)
 
 	items := make([]domain.ArchiveItem, 0, 128)
 	var currentItem *domain.ArchiveItem
 	var isSolid bool
+	var inFilesSection bool // Tracks if we are reading the section in 7-Zip output after the divider
 
 	sep := []byte(" = ")
+	divider := []byte("----------")
 	solidPrefix := []byte("Solid = ")
 	plusSign := []byte("+")
 
@@ -32,16 +34,26 @@ func ParseSLTReader(r io.Reader, archivePath string) ([]domain.ArchiveItem, bool
 			line = bytes.TrimRight(line, "\r\n")
 			trimmed := bytes.TrimSpace(line)
 
+			// Going through the header (section before the divider)
+			if !inFilesSection {
+				if bytes.HasPrefix(trimmed, divider) {
+					inFilesSection = true
+					continue
+				}
+				if bytes.HasPrefix(trimmed, solidPrefix) {
+					val := bytes.TrimSpace(trimmed[len(solidPrefix):])
+					isSolid = bytes.Equal(val, plusSign)
+				}
+				continue
+			}
+
 			if len(trimmed) == 0 {
 				if currentItem != nil {
-					if currentItem.Path != "" && currentItem.Path != baseArchive {
+					if currentItem.Path != "" {
 						items = append(items, *currentItem)
 					}
 					currentItem = nil
 				}
-			} else if bytes.HasPrefix(trimmed, solidPrefix) {
-				val := bytes.TrimSpace(trimmed[len(solidPrefix):])
-				isSolid = bytes.Equal(val, plusSign)
 			} else if keyBytes, valBytes, found := bytes.Cut(line, sep); found {
 				key := string(bytes.TrimSpace(keyBytes))
 				valStr := string(valBytes)
@@ -86,7 +98,7 @@ func ParseSLTReader(r io.Reader, archivePath string) ([]domain.ArchiveItem, bool
 		}
 	}
 
-	if currentItem != nil && currentItem.Path != "" && currentItem.Path != baseArchive {
+	if inFilesSection && currentItem != nil && currentItem.Path != "" {
 		items = append(items, *currentItem)
 	}
 
