@@ -263,9 +263,6 @@ func HasSiblingContinuationVolume(archivePath string) bool {
 		if _, err := os.Stat(base + ".r00"); err == nil {
 			return true
 		}
-		if _, err := os.Stat(base + ".r01"); err == nil {
-			return true
-		}
 		if _, err := os.Stat(base + ".R00"); err == nil {
 			return true
 		}
