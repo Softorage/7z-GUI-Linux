@@ -19,6 +19,8 @@ import (
 // using an io.Pipe: uncompressing the outer wrapper to stdout, and streaming it directly into the inner tar extractor.
 // Attaches an empty Reader to Stdin to prevent processes from hanging if an archive requires input.
 func ExtractArchive(archivePath, destDir, password string, targets ...string) error {
+	archivePath = sys.ResolvePrimaryVolume(archivePath)
+
 	if sys.IsTarballExtension(archivePath) {
 		// Decompress outer stream (e.g., gzip, bzip2, xz) to stdout (-so)
 		args1 := []string{"x", archivePath, "-so", "-bso0", "-bsp0"}
@@ -93,9 +95,10 @@ func ExtractArchiveItems(items []domain.ClipboardItem) (map[string]string, strin
 	groups := make(map[string][]string)
 	for _, item := range items {
 		if item.IsArchive {
-			groups[item.ArchivePath] = append(groups[item.ArchivePath], item.Path)
+			primaryPath := sys.ResolvePrimaryVolume(item.ArchivePath)
+			groups[primaryPath] = append(groups[primaryPath], item.Path)
 			if item.Password != "" {
-				passwords[item.ArchivePath] = item.Password
+				passwords[primaryPath] = item.Password
 			}
 		}
 	}
@@ -120,6 +123,8 @@ func ExtractArchiveItems(items []domain.ClipboardItem) (map[string]string, strin
 // ListArchive retrieves detailed metadata from an archive using 7-Zip's SLT flag `-slt`.
 // Streams stdout directly to ParseSLTReader to avoid buffering hundreds of megabytes in heap.
 func ListArchive(archivePath, password string) ([]domain.ArchiveItem, bool, error) {
+	archivePath = sys.ResolvePrimaryVolume(archivePath)
+
 	var (
 		stdout   io.Reader
 		waitFunc func() error
@@ -221,6 +226,8 @@ func ListArchive(archivePath, password string) ([]domain.ArchiveItem, bool, erro
 
 // IsPasswordProtected tests if the archive requires a password for extraction.
 func IsPasswordProtected(archive string) bool {
+	archive = sys.ResolvePrimaryVolume(archive)
+
 	// Execute '7z l' (List) with a dummy password. This is fast and will reveal
 	// if the file is encrypted without extracting anything.
 	cmd := exec.Command(Root7zCmd, "l", "-slt", archive, "-pDummyPassword_123456789")
@@ -246,4 +253,36 @@ func IsPasswordProtected(archive string) bool {
 	}
 
 	return false
+}
+
+// HasSiblingContinuationVolume checks if a standalone .rar or .zip has continuation siblings on disk (e.g. .r00, .r01, or .z01).
+func HasSiblingContinuationVolume(archivePath string) bool {
+	ext := filepath.Ext(archivePath)
+	if sys.HasSuffixFold(ext, ".rar") {
+		base := archivePath[:len(archivePath)-len(ext)]
+		if _, err := os.Stat(base + ".r00"); err == nil {
+			return true
+		}
+		if _, err := os.Stat(base + ".r01"); err == nil {
+			return true
+		}
+		if _, err := os.Stat(base + ".R00"); err == nil {
+			return true
+		}
+	} else if sys.HasSuffixFold(ext, ".zip") {
+		base := archivePath[:len(archivePath)-len(ext)]
+		if _, err := os.Stat(base + ".z01"); err == nil {
+			return true
+		}
+		if _, err := os.Stat(base + ".Z01"); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckMultiVolume determines whether an archive is part of a split or multi-volume set,
+// inspecting both naming patterns and local disk sibling volumes.
+func CheckMultiVolume(archivePath string) bool {
+	return sys.IsMultiVolumeArchive(archivePath) || HasSiblingContinuationVolume(archivePath)
 }

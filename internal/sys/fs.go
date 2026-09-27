@@ -13,6 +13,16 @@ import (
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 )
 
+// ArchiveVolumeType identifies whether an archive is standalone, a starting multi-volume, or a continuation part.
+type ArchiveVolumeType int
+
+const (
+	VolumeTypeNone ArchiveVolumeType = iota
+	VolumeTypeSingle
+	VolumeTypeSplitPrimary
+	VolumeTypeSplitContinuation
+)
+
 // TruncateDisplayPath truncates a string with leading ellipsis if it exceeds maxLen
 func TruncateDisplayPath(path string, maxLen int) string {
 	if len(path) <= maxLen {
@@ -33,17 +43,192 @@ func GetDiskCacheDir() string {
 	return filepath.Join(cacheDir, domain.AppDirName)
 }
 
-// IsArchiveExtension returns true if the given path has a supported archive extension.
-func IsArchiveExtension(path string) bool {
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+func formatPaddedInt1(width int) string {
+	if width <= 1 {
+		return "1"
+	}
+	buf := make([]byte, width)
+	for i := 0; i < width-1; i++ {
+		buf[i] = '0'
+	}
+	buf[width-1] = '1'
+	return string(buf)
+}
+
+// findPartSubExtension extracts '.part<number>' immediately preceding a trailing '.rar' extension.
+func findPartSubExtension(stem string) (prefix string, num int, width int, ok bool) {
+	digitsEnd := len(stem)
+	digitsStart := digitsEnd
+	for digitsStart > 0 && isDigit(stem[digitsStart-1]) {
+		digitsStart--
+	}
+	if digitsStart == digitsEnd {
+		return "", 0, 0, false
+	}
+
+	// Must be preceded by ".part" (case-insensitive, 5 characters)
+	if digitsStart < 5 || CompareFold(stem[digitsStart-5:digitsStart], ".part") != 0 {
+		return "", 0, 0, false
+	}
+
+	val := 0
+	for i := digitsStart; i < digitsEnd; i++ {
+		val = val*10 + int(stem[i]-'0')
+	}
+
+	return stem[:digitsStart], val, digitsEnd - digitsStart, true
+}
+
+// ClassifyArchiveVolume categorizes an archive by volume type using allocation-free byte scanning.
+func ClassifyArchiveVolume(path string) ArchiveVolumeType {
 	ext := filepath.Ext(path)
-	return HasSuffixFold(ext, ".7z") ||
+	if ext == "" {
+		return VolumeTypeNone
+	}
+
+	// Numeric split extension check (.001, .002, ...)
+	if len(ext) >= 3 && ext[0] == '.' {
+		allDigits := true
+		for i := 1; i < len(ext); i++ {
+			if !isDigit(ext[i]) {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			val := 0
+			for i := 1; i < len(ext); i++ {
+				val = val*10 + int(ext[i]-'0')
+			}
+			if val == 1 {
+				return VolumeTypeSplitPrimary
+			}
+			return VolumeTypeSplitContinuation
+		}
+	}
+
+	// Legacy RAR volumes (.r00 - .r99, .s00 - .s99)
+	if len(ext) == 4 && ext[0] == '.' {
+		firstChar := ext[1]
+		if (firstChar == 'r' || firstChar == 'R' || firstChar == 's' || firstChar == 'S') &&
+			isDigit(ext[2]) && isDigit(ext[3]) {
+			return VolumeTypeSplitContinuation
+		}
+	}
+
+	// Split PKZIP volumes (.z01 - .z99)
+	if len(ext) == 4 && ext[0] == '.' {
+		firstChar := ext[1]
+		if (firstChar == 'z' || firstChar == 'Z') && isDigit(ext[2]) && isDigit(ext[3]) {
+			return VolumeTypeSplitContinuation
+		}
+	}
+
+	// RAR with modern .partN.rar naming
+	if HasSuffixFold(ext, ".rar") {
+		stem := path[:len(path)-len(ext)]
+		if _, num, _, ok := findPartSubExtension(stem); ok {
+			if num == 1 {
+				return VolumeTypeSplitPrimary
+			}
+			return VolumeTypeSplitContinuation
+		}
+		return VolumeTypeSingle
+	}
+
+	// Standard single-volume archive extensions
+	if HasSuffixFold(ext, ".7z") ||
 		HasSuffixFold(ext, ".zip") ||
 		HasSuffixFold(ext, ".tar") ||
 		HasSuffixFold(ext, ".gz") ||
 		HasSuffixFold(ext, ".bz2") ||
 		HasSuffixFold(ext, ".xz") ||
-		HasSuffixFold(ext, ".wim") ||
-		HasSuffixFold(ext, ".rar")
+		HasSuffixFold(ext, ".wim") {
+		return VolumeTypeSingle
+	}
+
+	return VolumeTypeNone
+}
+
+// IsArchiveExtension returns true if the given path has a supported archive extension or split volume suffix.
+func IsArchiveExtension(path string) bool {
+	return ClassifyArchiveVolume(path) != VolumeTypeNone
+}
+
+// IsMultiVolumeArchive returns true if path belongs to a split or multi-volume archive set.
+func IsMultiVolumeArchive(path string) bool {
+	vType := ClassifyArchiveVolume(path)
+	return vType == VolumeTypeSplitPrimary || vType == VolumeTypeSplitContinuation
+}
+
+// IsSplitContinuationVolume returns true if path represents a secondary volume (.002+, .part2.rar+, .r00+, .z01+).
+func IsSplitContinuationVolume(path string) bool {
+	return ClassifyArchiveVolume(path) == VolumeTypeSplitContinuation
+}
+
+// ResolvePrimaryVolume returns the path of the starting/primary volume for multi-volume archives.
+// Standalone archives and primary volumes return the original path unmodified.
+func ResolvePrimaryVolume(path string) string {
+	ext := filepath.Ext(path)
+	if ext == "" {
+		return path
+	}
+
+	// Numeric split extensions (.002+ -> .001)
+	if len(ext) >= 3 && ext[0] == '.' {
+		allDigits := true
+		for i := 1; i < len(ext); i++ {
+			if !isDigit(ext[i]) {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			base := path[:len(path)-len(ext)]
+			width := len(ext) - 1
+			return base + "." + formatPaddedInt1(width)
+		}
+	}
+
+	//  Modern RAR volumes (.part02.rar -> .part01.rar)
+	if HasSuffixFold(ext, ".rar") {
+		stem := path[:len(path)-len(ext)]
+		if prefix, _, width, ok := findPartSubExtension(stem); ok {
+			return prefix + formatPaddedInt1(width) + ext
+		}
+		return path
+	}
+
+	// Legacy RAR volumes (.r00 -> .rar)
+	if len(ext) == 4 && ext[0] == '.' {
+		firstChar := ext[1]
+		if (firstChar == 'r' || firstChar == 'R' || firstChar == 's' || firstChar == 'S') &&
+			isDigit(ext[2]) && isDigit(ext[3]) {
+			base := path[:len(path)-len(ext)]
+			if firstChar == 'R' || firstChar == 'S' {
+				return base + ".RAR"
+			}
+			return base + ".rar"
+		}
+	}
+
+	// Split PKZIP volumes (.z01 -> .zip)
+	if len(ext) == 4 && ext[0] == '.' {
+		firstChar := ext[1]
+		if (firstChar == 'z' || firstChar == 'Z') && isDigit(ext[2]) && isDigit(ext[3]) {
+			base := path[:len(path)-len(ext)]
+			if firstChar == 'Z' {
+				return base + ".ZIP"
+			}
+			return base + ".zip"
+		}
+	}
+
+	return path
 }
 
 // IsSingleFileArchive returns true if the archive format can only pack a single file directly.

@@ -60,6 +60,7 @@ type ArchiveLevel struct {
 	TempDir         string // Temporary directory managing extracted files for this level
 	IsRAM           bool   // Whether this level is staged in RAM (tmpfs)
 	AllocatedBytes  uint64 // Memory bytes reserved against the global staging quota
+	IsMultiVolume   bool   // Whether this archive level belongs to a multi-volume/split archive
 }
 
 // ClipboardItem holds details about items copied or cut in the app's custom clipboard,
