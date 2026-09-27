@@ -42,7 +42,6 @@ import (
 type explorerTabState struct {
 	currentPath     string
 	isArchive       bool
-	isMultiVolume   bool
 	archivePath     string
 	archiveRelPath  string
 	archivePassword string
@@ -66,6 +65,10 @@ var (
 	explorerTabsState   = make(map[*container.TabItem]*explorerTabState)
 	explorerTabsStateMu sync.RWMutex // Protects parallel access to tab states across goroutines
 )
+
+func (state *explorerTabState) isMultiVolume() bool {
+	return state.isArchive && len(state.archiveStack) > 0 && state.archiveStack[len(state.archiveStack)-1].IsMultiVolume
+}
 
 // Helper for Tab & Stack Management
 
@@ -183,6 +186,7 @@ func BuildExplorerTab(w fyne.Window) fyne.CanvasObject {
 				state.archivePath = ""
 				state.archiveRelPath = ""
 				state.archivePassword = ""
+				state.archiveStack = nil
 				state.refresh(w)
 			}
 		} else {
@@ -592,7 +596,6 @@ func openArchiveLevel(w fyne.Window, state *explorerTabState, item domain.FileSy
 				}
 				state.archiveStack = append(state.archiveStack, lvl)
 				state.isArchive = true
-				state.isMultiVolume = isMultiVolume
 				state.archivePath = extractedPath
 				state.archiveRelPath = ""
 				state.archivePassword = pwd
@@ -625,7 +628,6 @@ func openArchiveLevel(w fyne.Window, state *explorerTabState, item domain.FileSy
 				}
 				state.archiveStack = []domain.ArchiveLevel{lvl}
 				state.isArchive = true
-				state.isMultiVolume = isMultiVolume
 				state.archivePath = targetPath
 				state.archiveRelPath = ""
 				state.archivePassword = pwd
@@ -648,7 +650,7 @@ func openArchiveLevel(w fyne.Window, state *explorerTabState, item domain.FileSy
 // refresh reloads the folder/archive entry listing off the main thread and resets list selection states.
 func (state *explorerTabState) refresh(w fyne.Window) {
 	if state.isArchive {
-		if state.isMultiVolume {
+		if state.isMultiVolume() {
 			state.badgeLabel.SetText("[Archive View (Multi-Volume - Read-Only)]")
 		} else {
 			state.badgeLabel.SetText("[Archive View]")
@@ -674,21 +676,21 @@ func (state *explorerTabState) refresh(w fyne.Window) {
 					clear(state.selectedItems)
 				}
 				if state.cutBtn != nil {
-					if state.isMultiVolume || len(state.archiveStack) > 1 {
+					if state.isMultiVolume() || len(state.archiveStack) > 1 {
 						state.cutBtn.Disable()
 					} else {
 						state.cutBtn.Enable()
 					}
 				}
 				if state.pasteBtn != nil {
-					if state.isMultiVolume {
+					if state.isMultiVolume() {
 						state.pasteBtn.Disable()
 					} else {
 						state.pasteBtn.Enable()
 					}
 				}
 				if state.deleteBtn != nil {
-					if state.isMultiVolume {
+					if state.isMultiVolume() {
 						state.deleteBtn.Disable()
 					} else {
 						state.deleteBtn.Enable()
@@ -728,7 +730,6 @@ func (state *explorerTabState) refresh(w fyne.Window) {
 				} else {
 					clear(state.selectedItems)
 				}
-				state.isMultiVolume = false
 				if state.cutBtn != nil {
 					state.cutBtn.Enable()
 				}
@@ -780,12 +781,11 @@ func (state *explorerTabState) goUp(w fyne.Window) {
 				state.archivePath = prev.ArchivePath
 				state.archiveRelPath = prev.ArchiveRelPath
 				state.archivePassword = prev.ArchivePassword
-				state.isMultiVolume = prev.IsMultiVolume
 			} else {
 				// Pop out of archive view back to standard local file view
 				state.cleanupTemp()
 				state.isArchive = false
-				state.isMultiVolume = false
+				state.archiveStack = nil
 				state.currentPath = filepath.Dir(state.archivePath)
 				state.archivePath = ""
 				state.archiveRelPath = ""
@@ -804,7 +804,7 @@ func (state *explorerTabState) goUp(w fyne.Window) {
 
 // addToClipboard adds currently selected explorer items to the thread-safe app clipboard.
 func addToClipboard(state *explorerTabState, op string) {
-	if state.isArchive && state.isMultiVolume && op == appstate.CutOperation {
+	if state.isArchive && state.isMultiVolume() && op == appstate.CutOperation {
 		appstate.SetInfo("Cut operation is disabled in multi-volume archives.")
 		return
 	}
@@ -949,7 +949,7 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 	appstate.ClipboardMu.Unlock()
 
 	if state.isArchive {
-		if state.isMultiVolume {
+		if state.isMultiVolume() {
 			dialog.ShowInformation("Read-Only Archive", "Multi-volume archives are read-only and cannot be modified.", w)
 			return
 		}
@@ -1074,7 +1074,7 @@ func handleDelete(state *explorerTabState, w fyne.Window) {
 		return
 	}
 
-	if state.isArchive && state.isMultiVolume {
+	if state.isArchive && state.isMultiVolume() {
 		dialog.ShowInformation("Read-Only Archive", "Multi-volume archives are read-only and cannot be modified.", w)
 		return
 	}
@@ -1177,6 +1177,10 @@ func handleContextExtract(state *explorerTabState, w fyne.Window) {
 		for name, selected := range state.selectedItems {
 			if selected && sys.IsArchiveExtension(name) {
 				primary := sys.ResolvePrimaryVolume(filepath.Join(state.currentPath, name))
+				if _, err := os.Stat(primary); err != nil {
+					dialog.ShowError(fmt.Errorf("cannot extract %s: primary volume '%s' not found", name, filepath.Base(primary)), w)
+					return
+				}
 				if !seen[primary] {
 					seen[primary] = true
 					targetArchives = append(targetArchives, primary)
