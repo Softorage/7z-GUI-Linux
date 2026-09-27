@@ -25,44 +25,6 @@ import (
 var ExtractSrcEntry *widget.Entry
 var ExtractDestEntry *widget.Entry
 
-// getArchiveBaseName computes a clean folder name by stripping container and multi-volume suffixes.
-func getArchiveBaseName(archivePath string) string {
-	name := filepath.Base(archivePath)
-	ext := filepath.Ext(name)
-	if ext == "" {
-		return name
-	}
-
-	// Compound tarball extensions (.tar.gz, .tar.bz2, etc.)
-	for _, tarExt := range []string{".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tbz2", ".tbz", ".txz"} {
-		if sys.HasSuffixFold(name, tarExt) {
-			return name[:len(name)-len(tarExt)]
-		}
-	}
-
-	// Numeric split extensions (.7z.001, .zip.001, .001)
-	if sys.ClassifyArchiveVolume(name) != sys.VolumeTypeNone && len(ext) >= 3 && ext[0] == '.' {
-		stem := name[:len(name)-len(ext)]
-		innerExt := filepath.Ext(stem)
-		if innerExt != "" && sys.IsArchiveExtension(stem) {
-			return stem[:len(stem)-len(innerExt)]
-		}
-		return stem
-	}
-
-	// RAR multi-volume parts (.part1.rar, .part01.rar)
-	if sys.HasSuffixFold(ext, ".rar") {
-		stem := name[:len(name)-len(ext)]
-		partIdx := strings.LastIndex(strings.ToLower(stem), ".part")
-		if partIdx != -1 && partIdx > 0 {
-			return stem[:partIdx]
-		}
-		return stem
-	}
-
-	return strings.TrimSuffix(name, ext)
-}
-
 func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 	var selectedArchives []string
 
@@ -88,7 +50,7 @@ func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 		}
 		parentPath := filepath.Dir(selectedArchives[0])
 		if len(selectedArchives) == 1 && createSubfolderCheck.Checked {
-			baseName := getArchiveBaseName(selectedArchives[0])
+			baseName := sys.GetArchiveBaseName(selectedArchives[0])
 			destEntry.SetText(filepath.Join(parentPath, baseName))
 		} else {
 			destEntry.SetText(parentPath)
@@ -222,12 +184,17 @@ func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 		}
 	}
 
+	var updatingExtractEntry bool
 	ExtractSrcEntry.OnChanged = func(val string) {
-		if val == "" {
+		if val == "" || updatingExtractEntry {
 			return
 		}
+		updatingExtractEntry = true
+		paths := strings.Split(val, "\n")
 		ExtractSrcEntry.SetText("") // Clear listening value safely to prevent recurrences
-		addArchives(strings.Split(val, "\n"))
+		updatingExtractEntry = false
+
+		addArchives(paths)
 	}
 
 	browseFileBtn := widget.NewButtonWithIcon("Add Archives", theme.FileIcon(), func() {
@@ -237,7 +204,7 @@ func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 				zenity.FileFilters{
 					{Name: "Supported Archives", Patterns: []string{
 						"*.zip", "*.7z", "*.rar", "*.tar.gz", "*.tar", "*.gz", "*.bz2", "*.xz", "*.wim",
-						"*.001", "*.part*.rar", "*.r00", "*.z01",
+						"*.001", "*.part*.rar", "*.Part*.rar", "*.r??", "*.R??", "*.z??", "*.Z??",
 					}},
 					{Name: "All Files", Patterns: []string{"*"}},
 				},
@@ -304,7 +271,7 @@ func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 		src := selectedArchives[idx]
 		var dest string
 		if len(selectedArchives) > 1 && createSubfolderCheck.Checked {
-			baseName := getArchiveBaseName(src)
+			baseName := sys.GetArchiveBaseName(src)
 			dest = filepath.Join(destEntry.Text, baseName)
 		} else if len(selectedArchives) == 1 && createSubfolderCheck.Checked {
 			dest = destEntry.Text

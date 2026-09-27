@@ -59,19 +59,19 @@ func formatPaddedInt1(width int) string {
 	return string(buf)
 }
 
-// findPartSubExtension extracts '.part<number>' immediately preceding a trailing '.rar' extension.
-func findPartSubExtension(stem string) (prefix string, num int, width int, ok bool) {
+// findPartSubExtension extracts the base stem preceding '.part<number>' and the part index before a trailing '.rar' extension.
+func findPartSubExtension(stem string) (base string, num int, width int, ok bool) {
 	digitsEnd := len(stem)
 	digitsStart := digitsEnd
 	for digitsStart > 0 && isDigit(stem[digitsStart-1]) {
 		digitsStart--
 	}
-	if digitsStart == digitsEnd {
+	if digitsStart == digitsEnd || digitsStart < 5 {
 		return "", 0, 0, false
 	}
 
 	// Must be preceded by ".part" (case-insensitive, 5 characters)
-	if digitsStart < 5 || CompareFold(stem[digitsStart-5:digitsStart], ".part") != 0 {
+	if CompareFold(stem[digitsStart-5:digitsStart], ".part") != 0 {
 		return "", 0, 0, false
 	}
 
@@ -80,7 +80,7 @@ func findPartSubExtension(stem string) (prefix string, num int, width int, ok bo
 		val = val*10 + int(stem[i]-'0')
 	}
 
-	return stem[:digitsStart], val, digitsEnd - digitsStart, true
+	return stem[:digitsStart-5], val, digitsEnd - digitsStart, true
 }
 
 // ClassifyArchiveVolume categorizes an archive by volume type using allocation-free byte scanning.
@@ -170,7 +170,8 @@ func IsSplitContinuationVolume(path string) bool {
 	return ClassifyArchiveVolume(path) == VolumeTypeSplitContinuation
 }
 
-// ResolvePrimaryVolume returns the path of the starting/primary volume for multi-volume archives.
+// ResolvePrimaryVolume returns the path of the starting/primary volume for multi-volume archives,
+// TODO: checking filesystem existence with case tolerance for Linux file systems where applicable.
 // Standalone archives and primary volumes return the original path unmodified.
 func ResolvePrimaryVolume(path string) string {
 	ext := filepath.Ext(path)
@@ -197,8 +198,8 @@ func ResolvePrimaryVolume(path string) string {
 	//  Modern RAR volumes (.part02.rar -> .part01.rar)
 	if HasSuffixFold(ext, ".rar") {
 		stem := path[:len(path)-len(ext)]
-		if prefix, _, width, ok := findPartSubExtension(stem); ok {
-			return prefix + formatPaddedInt1(width) + ext
+		if base, _, width, ok := findPartSubExtension(stem); ok {
+			return base + stem[len(base):len(base)+5] + formatPaddedInt1(width) + ext
 		}
 		return path
 	}
@@ -250,6 +251,43 @@ func IsTarballExtension(path string) bool {
 		HasSuffixFold(path, ".tbz2") ||
 		HasSuffixFold(path, ".tbz") ||
 		HasSuffixFold(path, ".txz")
+}
+
+// GetArchiveBaseName computes a clean folder name by stripping container and multi-volume suffixes.
+func GetArchiveBaseName(archivePath string) string {
+	name := filepath.Base(archivePath)
+	ext := filepath.Ext(name)
+	if ext == "" {
+		return name
+	}
+
+	// Compound tarball extensions (.tar.gz, .tar.bz2, etc.)
+	for _, tarExt := range []string{".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tbz2", ".tbz", ".txz"} {
+		if HasSuffixFold(name, tarExt) {
+			return name[:len(name)-len(tarExt)]
+		}
+	}
+
+	// Numeric split extensions (.7z.001, .zip.001, .001)
+	if ClassifyArchiveVolume(name) != VolumeTypeNone && len(ext) >= 3 && ext[0] == '.' {
+		stem := name[:len(name)-len(ext)]
+		innerExt := filepath.Ext(stem)
+		if innerExt != "" && IsArchiveExtension(stem) {
+			return stem[:len(stem)-len(innerExt)]
+		}
+		return stem
+	}
+
+	// RAR multi-volume parts (.part1.rar, .part01.rar)
+	if HasSuffixFold(ext, ".rar") {
+		stem := name[:len(name)-len(ext)]
+		if base, _, _, ok := findPartSubExtension(stem); ok {
+			return base
+		}
+		return stem
+	}
+
+	return strings.TrimSuffix(name, ext)
 }
 
 // FormatSize formats byte values into human-readable strings (B, KB, MB, GB, TB).
