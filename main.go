@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"time"
+	"runtime"
+	"runtime/debug"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -18,6 +20,11 @@ import (
 )
 
 func main() {
+	// Set proactive GC pacing (50% target) to prevent heap doubling
+	// and keep virtual memory spans (Sys) constrained during early layout passes.
+	debug.SetGCPercent(50)
+	debug.SetMemoryLimit(32 * 1024 * 1024)
+
 	a := app.NewWithID(domain.AppID)
 	if err := appstate.InitConfig(); err != nil {
 		fmt.Printf("Warning: Failed to initialize configuration: %v\n", err)
@@ -70,5 +77,20 @@ func main() {
 	if checkOnStartup {
 		go sys.CheckForUpdates(w, a, components.ShowUpdateDialog)
 	}
+
+	// Post-launch scavenger:
+	// Reclaims transient startup allocations (Viper decoding, layout trees, font parsing).
+	// Catches trailing background directory scan & list rendering, returning freed pages to the OS.
+	go func() {
+		time.Sleep(5 * time.Second)
+		runtime.GC()
+		debug.FreeOSMemory()
+
+		// Track memory being used
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		fmt.Printf("Go Heap In-Use: %.2f MB (Sys: %.2f MB)\n", float64(m.HeapInuse)/(1024*1024), float64(m.Sys)/(1024*1024))
+	}()
+
 	w.ShowAndRun()
 }

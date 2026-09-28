@@ -332,6 +332,23 @@ func HasDuplicateFilenames(sources []string) bool {
 	return false
 }
 
+// packSortedFileSystemItems sorts directory and file slices in-place and packs them
+// into a single, exact-capacity slice with directories preceding files.
+func packSortedFileSystemItems(dirs, files []domain.FileSystemItem) []domain.FileSystemItem {
+	slices.SortFunc(dirs, CompareFileSystemItems)
+	slices.SortFunc(files, CompareFileSystemItems)
+
+	total := len(dirs) + len(files)
+	if total == 0 {
+		return nil
+	}
+
+	result := make([]domain.FileSystemItem, total)
+	copy(result, dirs)
+	copy(result[len(dirs):], files)
+	return result
+}
+
 // GetLocalItems reads directory entries on disk, sorts folders before files, and evaluates symlinks.
 func GetLocalItems(dirPath string, showHidden bool) ([]domain.FileSystemItem, error) {
 	entries, err := os.ReadDir(dirPath)
@@ -340,10 +357,16 @@ func GetLocalItems(dirPath string, showHidden bool) ([]domain.FileSystemItem, er
 	}
 
 	numEntries := len(entries)
-	// Pre-allocating dirs with capacity = numEntries guarantees that
-	// `append(dirs, files...)` at the end never triggers a heap reallocation.
-	dirs := make([]domain.FileSystemItem, 0, numEntries)
-	files := make([]domain.FileSystemItem, 0, numEntries)
+	if numEntries == 0 {
+		return nil, nil
+	}
+
+	// Bound initial capacities to prevent allocating oversized slices for directories
+	// with many entries or large proportions of hidden files.
+	dirsCap := min(numEntries/4+4, 64)
+	filesCap := min(numEntries, 256)
+	dirs := make([]domain.FileSystemItem, 0, dirsCap)
+	files := make([]domain.FileSystemItem, 0, filesCap)
 
 	// Pre-normalize base directory prefix once to avoid calling filepath.Join / filepath.Clean
 	// on every entry inside the loop.
@@ -395,10 +418,7 @@ func GetLocalItems(dirPath string, showHidden bool) ([]domain.FileSystemItem, er
 		}
 	}
 
-	slices.SortFunc(dirs, CompareFileSystemItems)
-	slices.SortFunc(files, CompareFileSystemItems)
-
-	return append(dirs, files...), nil
+	return packSortedFileSystemItems(dirs, files), nil
 }
 
 // GetVirtualItems maps raw flat archive entry paths into a virtual folder hierarchy corresponding to currentRelPath level
@@ -474,10 +494,7 @@ func GetVirtualItems(all []domain.ArchiveItem, currentRelPath string) []domain.F
 		}
 	}
 
-	slices.SortFunc(dirs, CompareFileSystemItems)
-	slices.SortFunc(files, CompareFileSystemItems)
-
-	return append(dirs, files...)
+	return packSortedFileSystemItems(dirs, files)
 }
 
 // CompareFold compares two ASCII/UTF-8 strings case-insensitively without heap allocation.

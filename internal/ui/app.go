@@ -17,25 +17,46 @@ func BuildMainLayout(w fyne.Window, a fyne.App) fyne.CanvasObject {
 	appstate.InfoBar.Alignment = fyne.TextAlignCenter
 	appstate.InfoBar.Wrapping = fyne.TextWrapWord // Properly wraps text instead of resizing window
 
-	// Build Tab Contents
-	explorerTab := tabs.BuildExplorerTab(w)
-	compressTab := tabs.BuildCompressTab(w)
-	extractTab := tabs.BuildExtractTab(w)
-	checksumTab := tabs.BuildChecksumTab(w)
-	statusTab := tabs.BuildStatusTab(w)
-	settingsTab := tabs.BuildSettingsTab(w, a)
-
 	// Create a Max container that will act as the dynamic main content area
 	contentArea := container.NewStack()
 
+	// Tab view cache for lazy, on-demand instantiation to minimizes startup heap allocation
+	var tabViews [6]fyne.CanvasObject
+
+	getTab := func(id widget.ListItemID) fyne.CanvasObject {
+		if id < 0 || int(id) >= len(tabViews) {
+			return nil
+		}
+		if tabViews[id] != nil {
+			return tabViews[id]
+		}
+
+		switch id {
+		case domain.ExplorerTabRank:
+			tabViews[id] = tabs.BuildExplorerTab(w)
+		case domain.CompressTabRank:
+			tabViews[id] = tabs.BuildCompressTab(w)
+		case domain.ExtractTabRank:
+			tabViews[id] = tabs.BuildExtractTab(w)
+		case domain.ChecksumTabRank:
+			tabViews[id] = tabs.BuildChecksumTab(w)
+		case domain.StatusTabRank:
+			tabViews[id] = tabs.BuildStatusTab(w)
+		case domain.SettingsTabRank:
+			tabViews[id] = tabs.BuildSettingsTab(w, a)
+		}
+		return tabViews[id]
+	}
+
 	// Construct Sidebar Tabs Menu
-	titles := make([]string, 6)
-	titles[domain.ExplorerTabRank] = "Explorer"
-	titles[domain.CompressTabRank] = "Compress"
-	titles[domain.ExtractTabRank] = "Extract"
-	titles[domain.ChecksumTabRank] = "Checksum"
-	titles[domain.StatusTabRank] = "Status"
-	titles[domain.SettingsTabRank] = "Settings"
+	titles := [6]string{
+		domain.ExplorerTabRank: "Explorer",
+		domain.CompressTabRank: "Compress",
+		domain.ExtractTabRank:  "Extract",
+		domain.ChecksumTabRank: "Checksum",
+		domain.StatusTabRank:   "Status",
+		domain.SettingsTabRank: "Settings",
+	}
 
 	appstate.Tabs = widget.NewList(
 		func() int { return len(titles) },
@@ -62,21 +83,17 @@ func BuildMainLayout(w fyne.Window, a fyne.App) fyne.CanvasObject {
 			return
 		}
 
-		// Swap out the objects inside the main content area
-		switch id {
-		case domain.ExplorerTabRank:
-			contentArea.Objects = []fyne.CanvasObject{explorerTab}
-		case domain.CompressTabRank:
-			contentArea.Objects = []fyne.CanvasObject{compressTab}
-		case domain.ExtractTabRank:
-			contentArea.Objects = []fyne.CanvasObject{extractTab}
-		case domain.ChecksumTabRank:
-			contentArea.Objects = []fyne.CanvasObject{checksumTab}
-		case domain.StatusTabRank:
-			contentArea.Objects = []fyne.CanvasObject{statusTab}
-		case domain.SettingsTabRank:
-			contentArea.Objects = []fyne.CanvasObject{settingsTab}
+		selectedTab := getTab(id)
+		if selectedTab == nil {
+			return
 		}
+
+		if len(contentArea.Objects) == 1 && contentArea.Objects[0] == selectedTab {
+			return
+		}
+
+		// Swap out the objects inside the main content area
+		contentArea.Objects = []fyne.CanvasObject{selectedTab}
 		contentArea.Refresh()
 	}
 

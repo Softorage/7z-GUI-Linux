@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,10 +23,16 @@ type GithubRelease struct {
 
 var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		DisableKeepAlives: true,
+		Proxy:             http.ProxyFromEnvironment,
+	},
 }
 
 // FetchLatestRelease queries the GitHub API for the latest published release.
 func FetchLatestRelease(parent context.Context) (*GithubRelease, error) {
+	defer httpClient.CloseIdleConnections()
+
 	// Derive a bounded 10-second timeout context from the parent context
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
@@ -37,6 +44,7 @@ func FetchLatestRelease(parent context.Context) (*GithubRelease, error) {
 
 	req.Header.Set("User-Agent", "7GL-App/"+version.Version)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Close = true
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -48,8 +56,10 @@ func FetchLatestRelease(parent context.Context) (*GithubRelease, error) {
 		return nil, fmt.Errorf("server returned unexpected status: %s", resp.Status)
 	}
 
+	// Strictly bound response body to 128 KB to prevent unbounded memory allocation
+	limitedReader := io.LimitReader(resp.Body, 128*1024)
 	var rel GithubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+	if err := json.NewDecoder(limitedReader).Decode(&rel); err != nil {
 		return nil, fmt.Errorf("failed to decode release payload: %w", err)
 	}
 	return &rel, nil
@@ -57,6 +67,10 @@ func FetchLatestRelease(parent context.Context) (*GithubRelease, error) {
 
 // CheckForUpdates performs a silent background update check on application startup.
 func CheckForUpdates(w fyne.Window, a fyne.App, showDialog func(fyne.Window, fyne.App, GithubRelease)) {
+	// Defer startup update check by 3 seconds to prevent network/TLS allocation
+	// spikes while the application window, OpenGL context, and initial directory render settle.
+	time.Sleep(2 * time.Second)
+
 	rel, err := FetchLatestRelease(context.Background())
 	if err != nil || rel == nil {
 		return
