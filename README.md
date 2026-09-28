@@ -231,10 +231,13 @@ go mod tidy
 
 ## FAQ
 
-1. **Do you know how to code? Do you use AI to develop this project? Is this vibe-coded?**  
-   - Yes. I think, I may kinda know how to code. I am fairly confident that I understand the code I maintain (I keep forgetting though). Sometimes, there do appear parts of code (often via LLMs) that work and I don't quite understand how (and I have to ask to understand). But hey, that was the case even in StackOverflow days. I guess I'm dumb, just not enough to constantly keep messing the code. (-> Sanmay)  
-   - Yeah. I use LLMs mostly to discuss alternative implementations. I copy parts of code when discussing, and the LLM never has `write access` to files in the repo. Yes, I read the code. If you find any issues, please report them. Will try to fix them as soon as possible.  
-   - That's anyone's judgement.
+1. **Do you use AI to develop this project?**
+
+   Yes. I use LLMs when developing this project. LLM never has `write access` to the code. I use LLMs mostly for brainstorming and to discuss alternative implementations. If you find any issues, please report them. Will try to fix them as soon as possible. 
+
+2. **Do you even know how to code?**
+
+   Absolutely. Feel free to review the code to make your own assessment.
 
 ---
 
