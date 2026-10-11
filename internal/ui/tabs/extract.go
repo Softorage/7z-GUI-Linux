@@ -22,6 +22,43 @@ import (
 	"github.com/Softorage/7z-GUI-Linux/internal/ui/components"
 )
 
+var (
+	commonArchivePatterns = []string{
+		"*.7z", "*.7Z",
+		"*.zip", "*.ZIP", "*.zipx", "*.ZIPX",
+		"*.rar", "*.RAR", "*.part*.rar", "*.Part*.rar", "*.PART*.RAR", "*.r??", "*.R??",
+		"*.tar", "*.TAR",
+		"*.gz", "*.GZ", "*.gzip", "*.GZIP", "*.tar.gz", "*.TAR.GZ", "*.tgz", "*.TGZ",
+		"*.bz2", "*.BZ2", "*.bzip2", "*.BZIP2", "*.tar.bz2", "*.TAR.BZ2", "*.tbz", "*.TBZ", "*.tbz2", "*.TBZ2",
+		"*.xz", "*.XZ", "*.tar.xz", "*.TAR.XZ", "*.txz", "*.TXZ",
+		"*.zst", "*.ZST", "*.tar.zst", "*.TAR.ZST", "*.tzst", "*.TZST",
+		"*.wim", "*.WIM", "*.swm", "*.SWM", "*.esd", "*.ESD",
+		"*.001", "*.z??", "*.Z??",
+		"*.z", "*.Z", "*.taz", "*.TAZ", "*.lzma", "*.LZMA",
+		"*.lzh", "*.LZH", "*.lha", "*.LHA", "*.arj", "*.ARJ", "*.chm", "*.CHM",
+	}
+
+	diskImagePatterns = []string{
+		"*.iso", "*.ISO", "*.img", "*.IMG", "*.dmg", "*.DMG",
+		"*.vhd", "*.VHD", "*.vhdx", "*.VHDX", "*.vdi", "*.VDI", "*.vmdk", "*.VMDK",
+		"*.qcow", "*.QCOW", "*.qcow2", "*.QCOW2", "*.squashfs", "*.SQUASHFS", "*.cramfs", "*.CRAMFS",
+	}
+
+	packageInstallerPatterns = []string{
+		"*.deb", "*.DEB", "*.rpm", "*.RPM", "*.cpio", "*.CPIO", "*.ar", "*.AR",
+		"*.cab", "*.CAB", "*.msi", "*.MSI", "*.msp", "*.MSP", "*.pkg", "*.PKG", "*.xar", "*.XAR",
+	}
+
+	allSupportedArchivePatterns = func() []string {
+		total := len(commonArchivePatterns) + len(diskImagePatterns) + len(packageInstallerPatterns)
+		all := make([]string, 0, total)
+		all = append(all, commonArchivePatterns...)
+		all = append(all, diskImagePatterns...)
+		all = append(all, packageInstallerPatterns...)
+		return all
+	}()
+)
+
 var ExtractSrcEntry *widget.Entry
 var ExtractDestEntry *widget.Entry
 
@@ -202,11 +239,11 @@ func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 			files, err := zenity.SelectFileMultiple(
 				zenity.Title("Select Archives"),
 				zenity.FileFilters{
-					{Name: "Supported Archives", Patterns: []string{
-						"*.zip", "*.7z", "*.rar", "*.tar.gz", "*.tar", "*.gz", "*.bz2", "*.xz", "*.wim",
-						"*.001", "*.part*.rar", "*.Part*.rar", "*.r??", "*.R??", "*.z??", "*.Z??",
-					}},
-					{Name: "All Files", Patterns: []string{"*"}},
+					{Name: "All Supported Archives & Images", Patterns: allSupportedArchivePatterns},
+					{Name: "Common Archives (*.7z, *.zip, *.rar, *.tar...)", Patterns: commonArchivePatterns},
+					{Name: "Disk & Virtual Machine Images (*.iso, *.img, *.dmg...)", Patterns: diskImagePatterns},
+					{Name: "Packages & Installers (*.deb, *.rpm, *.cab...)", Patterns: packageInstallerPatterns},
+					{Name: "All Files (*)", Patterns: []string{"*"}},
 				},
 			)
 			if err == nil && len(files) > 0 {

@@ -141,14 +141,14 @@ func ClassifyArchiveVolume(path string) ArchiveVolumeType {
 		return VolumeTypeSingle
 	}
 
-	// Standard single-volume archive extensions
-	if HasSuffixFold(ext, ".7z") ||
-		HasSuffixFold(ext, ".zip") ||
-		HasSuffixFold(ext, ".tar") ||
-		HasSuffixFold(ext, ".gz") ||
-		HasSuffixFold(ext, ".bz2") ||
-		HasSuffixFold(ext, ".xz") ||
-		HasSuffixFold(ext, ".wim") {
+// Standard single-volume archive, image, package, and container formats supported by 7-Zip
+	switch strings.ToLower(ext) {
+	case ".7z", ".zip", ".zipx", ".tar", ".gz", ".gzip", ".bz2", ".bzip2",
+		".xz", ".zst", ".lzma", ".z", ".taz", ".tgz", ".tbz", ".tbz2",
+		".txz", ".tzst", ".wim", ".swm", ".esd", ".iso", ".img", ".dmg",
+		".vhd", ".vhdx", ".vdi", ".vmdk", ".qcow", ".qcow2", ".squashfs",
+		".cramfs", ".udf", ".deb", ".rpm", ".cpio", ".ar", ".cab",
+		".msi", ".msp", ".pkg", ".xar", ".lzh", ".lha", ".arj", ".chm":
 		return VolumeTypeSingle
 	}
 
@@ -236,10 +236,11 @@ func ResolvePrimaryVolume(path string) string {
 // IsSingleFileArchive returns true if the archive format can only pack a single file directly.
 // TODO: Same logic as isSingleStream in ui_compress. Consider DRYing it.
 func IsSingleFileArchive(path string) bool {
-	ext := filepath.Ext(path)
-	return HasSuffixFold(ext, ".gz") ||
-		HasSuffixFold(ext, ".bz2") ||
-		HasSuffixFold(ext, ".xz")
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".gz" || ext == ".gzip" ||
+		ext == ".bz2" || ext == ".bzip2" ||
+		ext == ".xz" || ext == ".lzma" ||
+		ext == ".z" || ext == ".zst"
 }
 
 // IsTarballExtension checks if a filename uses a double-compression TAR extension.
@@ -248,10 +249,12 @@ func IsTarballExtension(path string) bool {
 	return HasSuffixFold(path, ".tar.gz") ||
 		HasSuffixFold(path, ".tar.bz2") ||
 		HasSuffixFold(path, ".tar.xz") ||
+		HasSuffixFold(path, ".tar.zst") ||
 		HasSuffixFold(path, ".tgz") ||
 		HasSuffixFold(path, ".tbz2") ||
 		HasSuffixFold(path, ".tbz") ||
-		HasSuffixFold(path, ".txz")
+		HasSuffixFold(path, ".txz") ||
+		HasSuffixFold(path, ".tzst")
 }
 
 // GetArchiveBaseName computes a clean folder name by stripping container and multi-volume suffixes.
@@ -263,7 +266,7 @@ func GetArchiveBaseName(archivePath string) string {
 	}
 
 	// Compound tarball extensions (.tar.gz, .tar.bz2, etc.)
-	for _, tarExt := range []string{".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tbz2", ".tbz", ".txz"} {
+	for _, tarExt := range []string{".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tgz", ".tbz2", ".tbz", ".txz", ".tzst"} {
 		if HasSuffixFold(name, tarExt) {
 			return name[:len(name)-len(tarExt)]
 		}
