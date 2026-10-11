@@ -11,6 +11,7 @@ GenericName = "Archive Manager"
 Categories = ["Utility", "Archiving", "Compression"]
 Comment = "Graphical user interface for 7-Zip on Linux"
 Keywords = ["7z", "7-zip", "zip", "tar", "gzip", "compress", "extract", "archive"]
+MimeType = "application/x-7z-compressed;application/zip;application/x-tar;application/x-bzip;application/x-bzip2;application/x-gzip;application/x-xz;application/x-rar;application/x-rar-compressed;application/x-compressed-tar;application/x-bzip-compressed-tar;application/x-xz-compressed-tar;application/x-wim;application/vnd.ms-cab-compressed;application/x-iso9660-image;application/x-cpio;application/x-ar;application/x-rpm;application/vnd.debian.binary-package;application/zstd;application/x-zstd;"
 
 [Migrations]
 fyneDo = true

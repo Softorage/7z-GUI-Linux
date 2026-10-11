@@ -139,7 +139,7 @@ func propagateWriteBack(state *explorerTabState) {
 // Main UI Construction
 
 // BuildExplorerTab creates and sets up the primary Explorer tab view, including sidebar favorites and dynamic tabs.
-func BuildExplorerTab(w fyne.Window) fyne.CanvasObject {
+func BuildExplorerTab(w fyne.Window, initialTargets []string) fyne.CanvasObject {
 	appstate.FavoritesMu.Lock()
 	if len(appstate.Favorites) == 0 {
 		appstate.Favorites = appstate.GetInitialFavorites()
@@ -313,13 +313,26 @@ func BuildExplorerTab(w fyne.Window) fyne.CanvasObject {
 		explorerTabsStateMu.Unlock()
 	}
 
-	homePath, err := os.UserHomeDir()
-	if err != nil {
-		homePath = "/"
+	var firstTab *container.TabItem
+	for _, target := range initialTargets {
+		tab := createBrowserTab(w, target)
+		docTabs.Append(tab)
+		if firstTab == nil {
+			firstTab = tab
+		}
 	}
-	initialTab := createBrowserTab(w, homePath)
-	docTabs.Append(initialTab)
-	docTabs.Select(initialTab)
+	
+	if firstTab != nil {
+		docTabs.Select(firstTab)
+	} else {
+		homePath, err := os.UserHomeDir()
+		if err != nil {
+			homePath = "/"
+		}
+		initialTab := createBrowserTab(w, homePath)
+		docTabs.Append(initialTab)
+		docTabs.Select(initialTab)
+	}
 
 	split := container.NewHSplit(favSidebar, docTabs)
 	split.Offset = 0.2
@@ -329,8 +342,18 @@ func BuildExplorerTab(w fyne.Window) fyne.CanvasObject {
 
 // createBrowserTab constructs an explorer browser view (path bar, toolbar, file list, bottom actions).
 func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
+	fi, statErr := os.Stat(initialPath)
+	isTargetFile := statErr == nil && !fi.IsDir()
+
+	targetArchive := initialPath
+	currPath := initialPath
+	if isTargetFile {
+		targetArchive = sys.ResolvePrimaryVolume(initialPath)
+		currPath = filepath.Dir(targetArchive)
+	}
+
 	state := &explorerTabState{
-		currentPath:   initialPath,
+		currentPath:   currPath,
 		selectedItems: make(map[string]bool),
 		showHidden:    false,
 	}
@@ -515,11 +538,14 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 		nil, nil, list,
 	)
 
-	state.refresh(w)
-
-	tabTitle := filepath.Base(state.currentPath)
-	if tabTitle == "." || tabTitle == "/" || tabTitle == "" {
-		tabTitle = "Home"
+	var tabTitle string
+	if isTargetFile {
+		tabTitle = filepath.Base(targetArchive)
+	} else {
+		tabTitle = filepath.Base(state.currentPath)
+		if tabTitle == "." || tabTitle == "/" || tabTitle == "" {
+			tabTitle = "Home"
+		}
 	}
 	tabItem := container.NewTabItem(tabTitle, tabContent)
 	state.tabItem = tabItem
@@ -527,6 +553,44 @@ func createBrowserTab(w fyne.Window, initialPath string) *container.TabItem {
 	explorerTabsStateMu.Lock()
 	explorerTabsState[tabItem] = state
 	explorerTabsStateMu.Unlock()
+
+	if isTargetFile {
+		// TODO: explore if we can reuse existing function here
+		state.badgeLabel.SetText("[Archive View]")
+		state.pathEntry.SetText(targetArchive + " :: /")
+		go func() {
+			isMultiVolume := engine.CheckMultiVolume(targetArchive)
+			protected := engine.IsPasswordProtected(targetArchive)
+			openRoot := func(pwd string) {
+				lvl := domain.ArchiveLevel{
+					DisplayName:     filepath.Base(targetArchive),
+					ArchivePath:     targetArchive,
+					ArchiveRelPath:  "",
+					ArchivePassword: pwd,
+					IsMultiVolume:   isMultiVolume,
+				}
+				state.archiveStack = []domain.ArchiveLevel{lvl}
+				state.isArchive = true
+				state.archivePath = targetArchive
+				state.archiveRelPath = ""
+				state.archivePassword = pwd
+				state.refresh(w)
+			}
+
+			if protected {
+				fyne.Do(func() {
+					components.PromptArchivePassword(w, targetArchive, "Open", openRoot, func() {
+						appstate.SetInfo("Opening password-protected archive cancelled.")
+						state.refresh(w)
+					})
+				})
+			} else {
+				fyne.Do(func() { openRoot("") })
+			}
+		}()
+	} else {
+		state.refresh(w)
+	}
 
 	return tabItem
 }

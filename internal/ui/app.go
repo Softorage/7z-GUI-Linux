@@ -11,7 +11,7 @@ import (
 )
 
 // BuildMainLayout constructs the primary application interface layout.
-func BuildMainLayout(w fyne.Window, a fyne.App) fyne.CanvasObject {
+func BuildMainLayout(w fyne.Window, a fyne.App, initialTargets []string) fyne.CanvasObject {
 	// Bottom Info Bar
 	appstate.InfoBar = widget.NewLabel("Ready. Interact with an option to see its description.")
 	appstate.InfoBar.Alignment = fyne.TextAlignCenter
@@ -33,7 +33,7 @@ func BuildMainLayout(w fyne.Window, a fyne.App) fyne.CanvasObject {
 
 		switch id {
 		case domain.ExplorerTabRank:
-			tabViews[id] = tabs.BuildExplorerTab(w)
+			tabViews[id] = tabs.BuildExplorerTab(w, initialTargets)
 		case domain.CompressTabRank:
 			tabViews[id] = tabs.BuildCompressTab(w)
 		case domain.ExtractTabRank:

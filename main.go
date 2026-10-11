@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 	"runtime"
 	"runtime/debug"
@@ -34,8 +35,10 @@ func main() {
 	w := a.NewWindow("7-Zip GUI for Linux")
 	w.Resize(fyne.NewSize(1040, 650))
 
+	initialTargets := sys.ParseCLIPaths(os.Args[1:])
+
 	// Layout Main Window
-	mainLayout := ui.BuildMainLayout(w, a)
+	mainLayout := ui.BuildMainLayout(w, a, initialTargets)
 	w.SetContent(mainLayout)
 
 	// Pre-select first tab

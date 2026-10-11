@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -624,4 +625,51 @@ func GetUniqueArchiveDstPath(baseName, relPath string, existingPaths map[string]
 		counter++
 	}
 	return newName
+}
+
+// ParseCLIPaths sanitizes, unescapes, and validates filesystem paths or RFC 8089 URIs passed via CLI.
+func ParseCLIPaths(args []string) []string {
+	if len(args) == 0 {
+		return nil
+	}
+
+	targets := make([]string, 0, len(args))
+	seen := make(map[string]struct{}, len(args))
+
+	for _, arg := range args {
+		raw := strings.TrimSpace(arg)
+		if raw == "" || strings.HasPrefix(raw, "-") {
+			continue
+		}
+
+		filePath := raw
+		if strings.HasPrefix(raw, "file://") {
+			if u, err := url.Parse(raw); err == nil && u.Scheme == "file" {
+				if unescaped, err := url.PathUnescape(u.Path); err == nil {
+					filePath = unescaped
+				} else {
+					filePath = u.Path
+				}
+			} else {
+				filePath = strings.TrimPrefix(raw, "file://")
+			}
+		}
+
+		cleanPath := filepath.Clean(filePath)
+		absPath, err := filepath.Abs(cleanPath)
+		if err != nil {
+			absPath = cleanPath
+		}
+
+		resolved := ResolvePrimaryVolume(absPath)
+		if _, err := os.Stat(resolved); err != nil {
+			continue
+		}
+
+		if _, exists := seen[resolved]; !exists {
+			seen[resolved] = struct{}{}
+			targets = append(targets, resolved)
+		}
+	}
+	return targets
 }
