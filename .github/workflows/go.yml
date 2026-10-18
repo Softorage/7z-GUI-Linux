@@ -96,9 +96,9 @@ jobs:
 
     - name: Cross-Compile, Optimize, and Compress
       env:
-        URL_386: "https://github.com/ip7z/7zip/releases/download/26.02/7z2602-linux-x86.tar.xz"
-        URL_AMD64: "https://github.com/ip7z/7zip/releases/download/26.02/7z2602-linux-x64.tar.xz"
-        URL_ARM64: "https://github.com/ip7z/7zip/releases/download/26.02/7z2602-linux-arm64.tar.xz"
+        URL_386: "https://github.com/ip7z/7zip/releases/download/26.04/7z2604-linux-x86.tar.xz"
+        URL_AMD64: "https://github.com/ip7z/7zip/releases/download/26.04/7z2604-linux-x64.tar.xz"
+        URL_ARM64: "https://github.com/ip7z/7zip/releases/download/26.04/7z2604-linux-arm64.tar.xz"
       run: |
         mkdir -p ./public
 
