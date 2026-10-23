@@ -444,7 +444,10 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		memLimitEntry.PlaceHolder = "e.g. 80"
 	}
 
-	memLimitContainer := container.NewBorder(nil, nil, nil, memLimitUnitSelect, memLimitEntry)
+	memLimitContainer := container.NewBorder(
+		nil, nil, nil,
+		container.NewGridWrap(fyne.NewSize(200, memLimitUnitSelect.MinSize().Height), memLimitUnitSelect),
+		memLimitEntry)
 
 	// Dynamic Memory Required Labels
 	memCompLabel := widget.NewLabel("Calculating...")
