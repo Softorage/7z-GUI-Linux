@@ -1221,9 +1221,7 @@ func handleContextCompress(state *explorerTabState, w fyne.Window) {
 		return
 	}
 
-	if CompressSrcEntry != nil {
-		CompressSrcEntry.SetText(strings.Join(targets, "\n"))
-	}
+	AddCompressSources(targets)
 	if appstate.Tabs != nil {
 		appstate.Tabs.Select(domain.CompressTabRank)
 	}
@@ -1257,9 +1255,7 @@ func handleContextExtract(state *explorerTabState, w fyne.Window) {
 			return
 		}
 
-		if ExtractSrcEntry != nil {
-			ExtractSrcEntry.SetText(strings.Join(targetArchives, "\n"))
-		}
+		AddExtractSources(targetArchives)
 		if appstate.Tabs != nil {
 			appstate.Tabs.Select(domain.ExtractTabRank)
 		}
@@ -1324,9 +1320,7 @@ func handleContextChecksum(state *explorerTabState, w fyne.Window) {
 		return
 	}
 
-	if ChecksumFileEntry != nil {
-		ChecksumFileEntry.SetText(filepath.Join(state.currentPath, target))
-	}
+	SetChecksumTarget(filepath.Join(state.currentPath, target))
 	if appstate.Tabs != nil {
 		appstate.Tabs.Select(domain.ChecksumTabRank)
 	}

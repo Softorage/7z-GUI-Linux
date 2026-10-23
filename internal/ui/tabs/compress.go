@@ -25,13 +25,22 @@ import (
 
 // Any UI manipulation (like .SetText(), .SetValue(), .Refresh()) that is triggered inside a background goroutine (go func()) or a background timer (time.AfterFunc) must be wrapped in fyne.Do
 
-var CompressSrcEntry *widget.Entry
+var (
+	pendingCompressSources []string
+	onAddCompressSources   func([]string)
+)
+
+// AddCompressSources adds files/folders to the Compress tab, queuing them if the tab is not yet built.
+func AddCompressSources(paths []string) {
+	if onAddCompressSources != nil {
+		onAddCompressSources(paths)
+	} else {
+		pendingCompressSources = append(pendingCompressSources, paths...)
+	}
+}
 
 func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	var selectedSources []string
-
-	// Backward compatibility global entry (hidden listener)
-	CompressSrcEntry = widget.NewEntry()
 
 	// Custom Archive Name Checkbox and Entry
 	customNameEntry := widget.NewEntry()
@@ -233,33 +242,33 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		updateArchivePreview()
 	}
 
-	// Intercept and parse incoming values directed into standard compressSrcEntry strings
-	CompressSrcEntry.OnChanged = func(val string) {
-		if val == "" {
-			return
-		}
-		paths := strings.Split(val, "\n")
+	onAddCompressSources = func(paths []string) {
 		hasChanges := false
 		for _, p := range paths {
 			p = strings.TrimSpace(p)
-			if p != "" {
-				exists := false
-				for _, s := range selectedSources {
-					if s == p {
-						exists = true
-						break
-					}
+					if p == "" {
+				continue
+			}
+			exists := false
+			for _, s := range selectedSources {
+				if s == p {
+					exists = true
+					break
 				}
-				if !exists {
-					selectedSources = append(selectedSources, p)
-					hasChanges = true
-				}
+			}
+			if !exists {
+				selectedSources = append(selectedSources, p)
+				hasChanges = true
 			}
 		}
 		if hasChanges {
-			CompressSrcEntry.SetText("") // Clear listening value safely to prevent recurrences
 			refreshSourceList()
 		}
+	}
+
+	if len(pendingCompressSources) > 0 {
+		onAddCompressSources(pendingCompressSources)
+		pendingCompressSources = nil
 	}
 
 	// Action buttons

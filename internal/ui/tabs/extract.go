@@ -59,14 +59,23 @@ var (
 	}()
 )
 
-var ExtractSrcEntry *widget.Entry
-var ExtractDestEntry *widget.Entry
+var (
+	pendingExtractSources []string
+	onAddExtractSources   func([]string)
+	ExtractDestEntry      *widget.Entry
+)
+
+// AddExtractSources adds archive paths to the Extract tab, queuing them if the tab is not yet built.
+func AddExtractSources(paths []string) {
+	if onAddExtractSources != nil {
+		onAddExtractSources(paths)
+	} else {
+		pendingExtractSources = append(pendingExtractSources, paths...)
+	}
+}
 
 func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 	var selectedArchives []string
-
-	// Backward compatibility global entry (hidden listener)
-	ExtractSrcEntry = widget.NewEntry()
 
 	destEntry := widget.NewEntry()
 	ExtractDestEntry = destEntry
@@ -221,17 +230,10 @@ func BuildExtractTab(w fyne.Window) fyne.CanvasObject {
 		}
 	}
 
-	var updatingExtractEntry bool
-	ExtractSrcEntry.OnChanged = func(val string) {
-		if val == "" || updatingExtractEntry {
-			return
-		}
-		updatingExtractEntry = true
-		paths := strings.Split(val, "\n")
-		ExtractSrcEntry.SetText("") // Clear listening value safely to prevent recurrences
-		updatingExtractEntry = false
-
-		addArchives(paths)
+	onAddExtractSources = addArchives
+	if len(pendingExtractSources) > 0 {
+		addArchives(pendingExtractSources)
+		pendingExtractSources = nil
 	}
 
 	browseFileBtn := widget.NewButtonWithIcon("Add Archives", theme.FileIcon(), func() {

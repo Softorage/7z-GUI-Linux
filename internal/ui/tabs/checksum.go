@@ -19,7 +19,19 @@ import (
 	"github.com/Softorage/7z-GUI-Linux/internal/engine"
 )
 
-var ChecksumFileEntry *widget.Entry
+var (
+	ChecksumFileEntry   *widget.Entry
+	pendingChecksumFile string
+)
+
+// SetChecksumTarget sets the file path for checksumming, queuing it if the tab is not yet built.
+func SetChecksumTarget(path string) {
+	if ChecksumFileEntry != nil {
+		ChecksumFileEntry.SetText(path)
+	} else {
+		pendingChecksumFile = path
+	}
+}
 
 // hashRow groups the widgets representing a single checksum option.
 type hashRow struct {
@@ -62,6 +74,10 @@ func BuildChecksumTab(w fyne.Window) fyne.CanvasObject {
 	// File path entry
 	fileEntry := widget.NewEntry()
 	fileEntry.PlaceHolder = "Select a file to calculate checksums..."
+	if pendingChecksumFile != "" {
+		fileEntry.SetText(pendingChecksumFile)
+		pendingChecksumFile = ""
+	}
 
 	ChecksumFileEntry = fileEntry
 
