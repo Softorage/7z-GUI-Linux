@@ -13,6 +13,14 @@ const (
 
 	MinRAMLimitMB     = 256
 	DefaultRAMLimitMB = 8192
+
+	MemoryUnitDefault = "Default (80%)"
+	MemoryUnitPercent = "% of RAM"
+	MemoryUnitMB      = "MB"
+	MemoryUnitGB      = "GB"
+
+	MinMemoryLimitPercent = 10
+	MinMemoryLimitMB      = 64
 )
 
 // CompressionConfig holds default options for compression operations.
@@ -25,6 +33,8 @@ type CompressionConfig struct {
 	SolidBlockSize         string `mapstructure:"solid_block_size" json:"solid_block_size" yaml:"solid_block_size"`
 	MultithreadingThreads  int    `mapstructure:"multithreading_threads" json:"multithreading_threads" yaml:"multithreading_threads"`
 	EnableEncryptionHeader bool   `mapstructure:"enable_encryption_header" json:"enable_encryption_header" yaml:"enable_encryption_header"`
+	MemoryLimitValue       int    `mapstructure:"memory_limit_value" json:"memory_limit_value" yaml:"memory_limit_value"`
+	MemoryLimitUnit        string `mapstructure:"memory_limit_unit" json:"memory_limit_unit" yaml:"memory_limit_unit"`
 }
 
 // UpdateConfig holds preferences regarding update notifications and checks.
@@ -64,6 +74,8 @@ func DefaultConfig() AppConfig {
 			SolidBlockSize:         "64 MB",
 			MultithreadingThreads:  0,
 			EnableEncryptionHeader: true,
+			MemoryLimitValue:       80,
+			MemoryLimitUnit:        MemoryUnitDefault,
 		},
 		Updates: UpdateConfig{
 			CheckOnStartup:     true,

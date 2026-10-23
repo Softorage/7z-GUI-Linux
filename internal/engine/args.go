@@ -2,8 +2,10 @@ package engine
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
-
+	
+	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 	"github.com/Softorage/7z-GUI-Linux/internal/sys"
 )
 
@@ -66,7 +68,7 @@ func GetArchiveDestination(sources []string, outputDir string, format string, cu
 	return filepath.Join(dir, filename)
 }
 
-func Build7zArgs(src []string, outputDir string, customName string, format string, level string, method string, dictSize string, wordSize, blockSize string, threads, update string, sfx bool, shared bool, split string, enc bool, pass string, encName bool) []string {
+func Build7zArgs(src []string, outputDir string, customName string, format string, level string, method string, dictSize string, wordSize, blockSize string, threads, update string, sfx bool, shared bool, split string, enc bool, pass string, encName bool, memLimitVal int, memLimitUnit string) []string {
 
 	// Call unified helper to get the target destination
 	dest := GetArchiveDestination(src, outputDir, format, customName, sfx)
@@ -93,7 +95,8 @@ func Build7zArgs(src []string, outputDir string, customName string, format strin
 	}
 
 	// Build base parameters: command first, then output path, then all sources dynamically
-	args := []string{cmdAction, dest}
+	args := make([]string, 0, len(src)+24)
+	args = append(args, cmdAction, dest)
 	args = append(args, src...)
 	args = append(args, "-bsp1", "-t"+format)
 	args = append(args, updateSwitches...)
@@ -164,8 +167,26 @@ func Build7zArgs(src []string, outputDir string, customName string, format strin
 		args = append(args, "-ssw")
 	}
 
-	// Map threads (generally accepted across the board, ignored if unsupported)
-	args = append(args, "-mmt="+threads)
+	// Parse requested threads and apply memory governor
+	reqThreads, _ := strconv.Atoi(threads)
+	if reqThreads < 1 {
+		reqThreads = 1
+	}
+
+	effectiveThreads := threads
+	if memLimitUnit != "" && memLimitUnit != domain.MemoryUnitDefault {
+		totalRAM := sys.GetTotalRAMBytes()
+		limitBytes := ResolveMemoryLimitBytes(memLimitUnit, memLimitVal, totalRAM)
+		allowedThreads, _, _, _ := GovernThreads(format, level, method, dictSize, reqThreads, limitBytes)
+		effectiveThreads = strconv.Itoa(allowedThreads)
+
+		if memuseSwitch := FormatMemuseArg(memLimitUnit, memLimitVal, totalRAM, Root7zCmd); memuseSwitch != "" {
+			args = append(args, memuseSwitch)
+		}
+	}
+
+	// Map threads (governed to fit within memory budget)
+	args = append(args, "-mmt="+effectiveThreads)
 
 	// Map Split (Not supported by tar/gzip/bzip2/xz)
 	if split != "" && updatableArchiveFormat {

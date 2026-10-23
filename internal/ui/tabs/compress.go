@@ -406,16 +406,76 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		threadSelect.SetSelected(strconv.Itoa(numCPU))
 	}
 
-	/*
-		// Simulated calculation based on dict size
-		memCompLabel := widget.NewLabel("~150 MB")
-		memDecompLabel := widget.NewLabel("~20 MB")
-		dictSelect.OnChanged = func(_ string) {
-			memCompLabel.SetText("Depends on Dict & Threads")
-			memDecompLabel.SetText("Depends on Dict")
-			setInfo("Dictionary Size: How much data is analyzed in memory for repetitions. The larger it is, higher the compression ratios and more the RAM required. Generally, 32MB-64MB is sufficient for most files, while 512MB+ is recommended for massive archives. Should be less than or equal to the total size of the files being compressed.")
+	// Memory Limit Controls
+	memLimitEntry := widget.NewEntry()
+	memLimitUnitSelect := widget.NewSelect([]string{
+		domain.MemoryUnitDefault,
+		domain.MemoryUnitPercent,
+		domain.MemoryUnitMB,
+		domain.MemoryUnitGB,
+	}, nil)
+
+	var isUpdatingLimit bool
+	currentLimitUnit := domain.MemoryUnitDefault
+	if initialCfg.MemoryLimitUnit != "" {
+		currentLimitUnit = initialCfg.MemoryLimitUnit
+	}
+	memLimitUnitSelect.SetSelected(currentLimitUnit)
+
+	initialLimitVal := 80
+	if initialCfg.MemoryLimitValue > 0 {
+		initialLimitVal = initialCfg.MemoryLimitValue
+	}
+	memLimitEntry.SetText(strconv.Itoa(initialLimitVal))
+	if currentLimitUnit == domain.MemoryUnitDefault {
+		memLimitEntry.Disable()
+		memLimitEntry.PlaceHolder = "80"
+	} else {
+		memLimitEntry.Enable()
+		memLimitEntry.PlaceHolder = "e.g. 80"
+	}
+
+	memLimitContainer := container.NewBorder(nil, nil, nil, memLimitUnitSelect, memLimitEntry)
+
+	// Dynamic Memory Required Labels
+	memCompLabel := widget.NewLabel("Calculating...")
+	memCompLabel.Wrapping = fyne.TextWrapWord
+	memDecompLabel := widget.NewLabel("Calculating...")
+	memDecompLabel.Wrapping = fyne.TextWrapWord
+
+	updateMemoryDiagnostics := func() {
+		format := formatSelect.Selected
+		level := levelSelect.Selected
+		method := methodSelect.Selected
+		dictSize := dictSelect.Selected
+		reqThreads, _ := strconv.Atoi(threadSelect.Selected)
+		if reqThreads < 1 {
+			reqThreads = 1
+ 		}
+
+		unit := memLimitUnitSelect.Selected
+		val, _ := strconv.Atoi(strings.TrimSpace(memLimitEntry.Text))
+		if val <= 0 && unit == domain.MemoryUnitDefault {
+			val = 80
 		}
-	*/
+
+		totalRAM := sys.GetTotalRAMBytes()
+		limitBytes := engine.ResolveMemoryLimitBytes(unit, val, totalRAM)
+
+		allowedThreads, compBytes, decompBytes, exceedsSingle := engine.GovernThreads(format, level, method, dictSize, reqThreads, limitBytes)
+
+		decompStr := sys.FormatSize(int64(decompBytes))
+		memDecompLabel.SetText(decompStr)
+
+		compStr := sys.FormatSize(int64(compBytes))
+		if exceedsSingle {
+			memCompLabel.SetText(fmt.Sprintf("%s (Warning: Exceeds limit on 1 thread; consider smaller dictionary)", compStr))
+		} else if allowedThreads < reqThreads && unit != domain.MemoryUnitDefault {
+			memCompLabel.SetText(fmt.Sprintf("%s (Throttled: %d of %d threads allowed within limit)", compStr, allowedThreads, reqThreads))
+		} else {
+			memCompLabel.SetText(compStr)
+		}
+	}
 
 	// Update Mode
 	updateSelect := widget.NewSelect([]string{"Add and replace files", "Update and add files", "Freshen existing files", "Synchronize files"}, nil)
@@ -454,6 +514,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	// To switch to a manual "Save Defaults" button in the future, detach this function from the field OnChanged handlers and trigger it on button tap instead.
 	saveCompressConfig := func() {
 		threadVal, _ := strconv.Atoi(threadSelect.Selected)
+		memVal, _ := strconv.Atoi(strings.TrimSpace(memLimitEntry.Text))
 		appstate.UserConfigMu.Lock()
 		appstate.UserConfig.Compression = domain.CompressionConfig{
 			DefaultFormat:          formatSelect.Selected,
@@ -464,6 +525,8 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 			SolidBlockSize:         blockSelect.Selected,
 			MultithreadingThreads:  threadVal,
 			EnableEncryptionHeader: encNameCheck.Checked,
+			MemoryLimitValue:       memVal,
+			MemoryLimitUnit:        memLimitUnitSelect.Selected,
 		}
 		appstate.UserConfigMu.Unlock()
 		_ = appstate.SaveConfig()
@@ -472,15 +535,19 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	levelSelect.OnChanged = func(_ string) {
 		appstate.SetInfo("Compression Level: Higher levels offer better compression but use more memory.")
 		saveCompressConfig()
+		updateMemoryDiagnostics()
 	}
 
 	methodSelect.OnChanged = func(_ string) {
 		appstate.SetInfo("Compression Method: Core algorithm used to compress data. LZMA2 is standard for 7z.")
 		saveCompressConfig()
+		updateMemoryDiagnostics()
 	}
 
 	dictSelect.OnChanged = func(_ string) {
+		appstate.SetInfo("Dictionary Size: Larger dictionaries yield better compression but require more memory.")
 		saveCompressConfig()
+		updateMemoryDiagnostics()
 	}
 
 	wordSelect.OnChanged = func(_ string) {
@@ -496,6 +563,105 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 	threadSelect.OnChanged = func(_ string) {
 		appstate.SetInfo(fmt.Sprintf("CPU Threads: Total available = %d", numCPU))
 		saveCompressConfig()
+		updateMemoryDiagnostics()
+	}
+
+	memLimitEntry.OnChanged = func(s string) {
+		if isUpdatingLimit {
+			return
+		}
+		// Filter non-digit characters without regex heap allocation
+		filtered := make([]byte, 0, len(s))
+		for i := 0; i < len(s); i++ {
+			if s[i] >= '0' && s[i] <= '9' {
+				filtered = append(filtered, s[i])
+			}
+		}
+		if len(filtered) != len(s) {
+			isUpdatingLimit = true
+			memLimitEntry.SetText(string(filtered))
+			isUpdatingLimit = false
+			return
+		}
+		saveCompressConfig()
+		updateMemoryDiagnostics()
+	}
+
+	memLimitUnitSelect.OnChanged = func(newUnit string) {
+		if isUpdatingLimit {
+			return
+		}
+		isUpdatingLimit = true
+		defer func() {
+			isUpdatingLimit = false
+			currentLimitUnit = newUnit
+			saveCompressConfig()
+			updateMemoryDiagnostics()
+		}()
+
+		totalRAM := sys.GetTotalRAMBytes()
+		if totalRAM == 0 {
+			totalRAM = 8 * 1024 * 1024 * 1024
+		}
+
+		currentVal, _ := strconv.Atoi(strings.TrimSpace(memLimitEntry.Text))
+		if currentVal <= 0 {
+			currentVal = 80
+		}
+
+		if newUnit == domain.MemoryUnitDefault {
+			memLimitEntry.Disable()
+			memLimitEntry.SetText("80")
+			appstate.SetInfo("Memory limit set to 7-Zip default (80% of RAM).")
+			return
+		}
+
+		memLimitEntry.Enable()
+
+		// Convert existing limit value smoothly into the newly selected unit
+		var currentBytes uint64
+		switch currentLimitUnit {
+		case domain.MemoryUnitPercent, domain.MemoryUnitDefault:
+			pct := currentVal
+			if pct < domain.MinMemoryLimitPercent {
+				pct = domain.MinMemoryLimitPercent
+			} else if pct > 100 {
+				pct = 100
+			}
+			currentBytes = (totalRAM * uint64(pct)) / 100
+		case domain.MemoryUnitMB:
+			currentBytes = uint64(currentVal) * 1024 * 1024
+		case domain.MemoryUnitGB:
+			currentBytes = uint64(currentVal) * 1024 * 1024 * 1024
+		}
+
+		switch newUnit {
+		case domain.MemoryUnitPercent:
+			pct := int((currentBytes * 100) / totalRAM)
+			if pct < domain.MinMemoryLimitPercent {
+				pct = domain.MinMemoryLimitPercent
+			} else if pct > 100 {
+				pct = 100
+			}
+			memLimitEntry.SetText(strconv.Itoa(pct))
+			appstate.SetInfo(fmt.Sprintf("Memory limit set to %d%% of system RAM.", pct))
+
+		case domain.MemoryUnitMB:
+			mb := int(currentBytes / (1024 * 1024))
+			if mb < domain.MinMemoryLimitMB {
+				mb = domain.MinMemoryLimitMB
+			}
+			memLimitEntry.SetText(strconv.Itoa(mb))
+			appstate.SetInfo(fmt.Sprintf("Memory limit set to %d MB.", mb))
+
+		case domain.MemoryUnitGB:
+			gb := int(currentBytes / (1024 * 1024 * 1024))
+			if gb < 1 {
+				gb = 1
+			}
+			memLimitEntry.SetText(strconv.Itoa(gb))
+			appstate.SetInfo(fmt.Sprintf("Memory limit set to %d GB.", gb))
+		}
 	}
 
 	updateSelect.OnChanged = func(s string) {
@@ -554,6 +720,10 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		dictSelect.Enable()
 		wordSelect.Enable()
 		blockSelect.Enable()
+		memLimitUnitSelect.Enable()
+		if memLimitUnitSelect.Selected != domain.MemoryUnitDefault {
+			memLimitEntry.Enable()
+		}
 		updateSelect.Enable()
 		sfxCheck.Enable()
 		sharedCheck.Enable()
@@ -647,6 +817,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		}
 
 		updateArchivePreview()
+		updateMemoryDiagnostics()
 		saveCompressConfig()
 	}
 
@@ -706,6 +877,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		}
 
 		// Map options to 7z CLI
+		memVal, _ := strconv.Atoi(strings.TrimSpace(memLimitEntry.Text))
 		args := engine.Build7zArgs(
 			selectedSources,
 			outputDir,
@@ -724,6 +896,8 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 			encCheck.Checked,
 			passEntry.Text,
 			encNameCheck.Checked,
+			memVal,
+			memLimitUnitSelect.Selected,
 		)
 
 		// Safe fallback: append -spf2 if duplicate names exist across different directories
@@ -743,6 +917,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 
 	// Initialize the Empty list or view state
 	refreshSourceList()
+	updateMemoryDiagnostics()
 
 	// Form Construction
 	form := widget.NewForm(
@@ -757,10 +932,9 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		widget.NewFormItem("Word size:", wordSelect),
 		widget.NewFormItem("Solid Block size:", blockSelect),
 		widget.NewFormItem("CPU Threads:", threadSelect),
-		/*
-			widget.NewFormItem("Memory Compressing:", memCompLabel),
-			widget.NewFormItem("Memory Decompressing:", memDecompLabel),
-		*/
+		widget.NewFormItem("Memory Limit:", memLimitContainer),
+		widget.NewFormItem("Memory Compressing:", memCompLabel),
+		widget.NewFormItem("Memory Decompressing:", memDecompLabel),
 		widget.NewFormItem("Update mode:", updateSelect),
 		widget.NewFormItem("Options:", container.NewVBox(sfxCheck, sharedCheck)),
 		widget.NewFormItem("Split to volumes:", splitEntry),
