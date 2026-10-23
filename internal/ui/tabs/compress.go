@@ -482,7 +482,7 @@ func BuildCompressTab(w fyne.Window) fyne.CanvasObject {
 		compStr := sys.FormatSize(int64(compBytes))
 		if exceedsSingle {
 			memCompLabel.SetText(fmt.Sprintf("%s (Warning: Exceeds limit on 1 thread; consider smaller dictionary)", compStr))
-		} else if allowedThreads < reqThreads && unit != domain.MemoryUnitDefault {
+		} else if allowedThreads < reqThreads {
 			memCompLabel.SetText(fmt.Sprintf("%s (Throttled: %d of %d threads allowed within limit)", compStr, allowedThreads, reqThreads))
 		} else {
 			memCompLabel.SetText(compStr)

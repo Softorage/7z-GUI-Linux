@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 	
-	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 	"github.com/Softorage/7z-GUI-Linux/internal/sys"
 )
 
@@ -173,16 +172,13 @@ func Build7zArgs(src []string, outputDir string, customName string, format strin
 		reqThreads = 1
 	}
 
-	effectiveThreads := threads
-	if memLimitUnit != "" && memLimitUnit != domain.MemoryUnitDefault {
-		totalRAM := sys.GetTotalRAMBytes()
-		limitBytes := ResolveMemoryLimitBytes(memLimitUnit, memLimitVal, totalRAM)
-		allowedThreads, _, _, _ := GovernThreads(format, level, method, dictSize, reqThreads, limitBytes)
-		effectiveThreads = strconv.Itoa(allowedThreads)
+	totalRAM := sys.GetTotalRAMBytes()
+	limitBytes := ResolveMemoryLimitBytes(memLimitUnit, memLimitVal, totalRAM)
+	allowedThreads, _, _, _ := GovernThreads(format, level, method, dictSize, reqThreads, limitBytes)
+	effectiveThreads := strconv.Itoa(allowedThreads)
 
-		if memuseSwitch := FormatMemuseArg(memLimitUnit, memLimitVal, totalRAM, Root7zCmd); memuseSwitch != "" {
-			args = append(args, memuseSwitch)
-		}
+	if memuseSwitch := FormatMemuseArg(memLimitUnit, memLimitVal, totalRAM, Root7zCmd); memuseSwitch != "" {
+		args = append(args, memuseSwitch)
 	}
 
 	// Map threads (governed to fit within memory budget)
