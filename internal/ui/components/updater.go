@@ -19,6 +19,7 @@ import (
 	appstate "github.com/Softorage/7z-GUI-Linux/internal/app"
 	"github.com/Softorage/7z-GUI-Linux/internal/engine"
 	"github.com/Softorage/7z-GUI-Linux/internal/sys"
+	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 	"github.com/Softorage/7z-GUI-Linux/internal/version"
 )
 
@@ -147,7 +148,7 @@ func ShowUpdateDialog(w fyne.Window, a fyne.App, rel sys.GithubRelease) {
 			ramLimitMB := appstate.UserConfig.System.RAMLimitMB
 			appstate.UserConfigMu.RUnlock()
 
-			tempDir, isRAM, allocatedBytes := sys.SelectTempStorage(requiredBytes, ramPercent, ramLimitMB)
+			tempDir, isRAM, allocatedBytes := sys.SelectTempStorage(domain.DiskSubdirScratch, requiredBytes, ramPercent, ramLimitMB)
 			archivePath := filepath.Join(tempDir, matchingAsset.Name)
 
 			cleanup := func() {

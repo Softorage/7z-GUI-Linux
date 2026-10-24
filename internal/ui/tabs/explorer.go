@@ -627,7 +627,7 @@ func openArchiveLevel(w fyne.Window, state *explorerTabState, item domain.FileSy
 			ramLimitMB := appstate.UserConfig.System.RAMLimitMB
 			appstate.UserConfigMu.RUnlock()
 
-			tempDir, isRAM, allocatedBytes := sys.SelectTempStorage(uncompressedSize, ramPercent, ramLimitMB)
+			tempDir, isRAM, allocatedBytes := sys.SelectTempStorage(domain.DiskSubdirNested, uncompressedSize, ramPercent, ramLimitMB)
 			if isRAM {
 				appstate.SetInfo(fmt.Sprintf("Extracting %s to RAM (tmpfs)...", item.Name))
 			}
@@ -926,6 +926,7 @@ func addToClipboard(state *explorerTabState, op string) {
 			appstate.GlobalClipboard = append(appstate.GlobalClipboard, domain.ClipboardItem{
 				Path:        item.Path,
 				IsDir:       item.IsDir,
+				Size:        item.Size,
 				Op:          op,
 				IsArchive:   state.isArchive,
 				ArchivePath: state.archivePath,
@@ -1046,14 +1047,14 @@ func handlePaste(state *explorerTabState, w fyne.Window) {
 		go func() {
 			appstate.SetInfo("Pasting items...")
 
-			// Extract virtual archive items to a temporary location first
-			pathMap, tempDir, err := engine.ExtractArchiveItems(itemsCopy)
+			// Extract virtual archive items using governed temporary storage
+			pathMap, tempDir, isRAM, allocatedBytes, err := engine.ExtractArchiveItems(itemsCopy)
 			if err != nil {
 				fyne.Do(func() { dialog.ShowError(err, w) })
 				return
 			}
 			if tempDir != "" {
-				defer os.RemoveAll(tempDir)
+				defer sys.ReleaseTempStorage(tempDir, isRAM, allocatedBytes)
 			}
 
 			var errors []error
@@ -1341,8 +1342,8 @@ func addFilesToArchive(archivePath, relPath, password string, items []domain.Cli
 	}
 
 	go func() {
-		// Extract virtual source archive items first
-		pathMap, extractDir, err := engine.ExtractArchiveItems(items)
+		// Extract virtual source archive items first with governed storage
+		pathMap, extractDir, isExtractRAM, allocatedExtractBytes, err := engine.ExtractArchiveItems(items)
 		if err != nil {
 			fyne.Do(func() { dialog.ShowError(err, w) })
 			return
@@ -1379,7 +1380,7 @@ func addFilesToArchive(archivePath, relPath, password string, items []domain.Cli
 						action = domain.ActionSkip
 					case domain.ActionCancel:
 						if extractDir != "" {
-							os.RemoveAll(extractDir)
+							sys.ReleaseTempStorage(extractDir, isExtractRAM, allocatedExtractBytes)
 						}
 						return
 					}
@@ -1403,27 +1404,32 @@ func addFilesToArchive(archivePath, relPath, password string, items []domain.Cli
 
 		if len(itemsToStage) == 0 {
 			if extractDir != "" {
-				os.RemoveAll(extractDir)
+				sys.ReleaseTempStorage(extractDir, isExtractRAM, allocatedExtractBytes)
 			}
 			return
 		}
 
-		tempDir, err := os.MkdirTemp("", "7gl-stage-*")
-		if err != nil {
-			if extractDir != "" {
-				os.RemoveAll(extractDir)
+		var stageBytes uint64
+		for _, item := range itemsToStage {
+			if fi, err := os.Stat(item.SrcPath); err == nil && !fi.IsDir() {
+				stageBytes += uint64(fi.Size())
 			}
-			fyne.Do(func() { dialog.ShowError(err, w) })
-			return
 		}
+
+		appstate.UserConfigMu.RLock()
+		ramPercent := appstate.UserConfig.System.RAMUsagePercent
+		ramLimitMB := appstate.UserConfig.System.RAMLimitMB
+		appstate.UserConfigMu.RUnlock()
+
+		tempDir, isStageRAM, allocatedStageBytes := sys.SelectTempStorage(domain.DiskSubdirScratch, stageBytes, ramPercent, ramLimitMB)
 
 		targetDir := tempDir
 		if relPath != "" {
 			targetDir = filepath.Join(tempDir, relPath)
 			if err = os.MkdirAll(targetDir, 0755); err != nil {
-				os.RemoveAll(tempDir)
+				sys.ReleaseTempStorage(tempDir, isStageRAM, allocatedStageBytes)
 				if extractDir != "" {
-					os.RemoveAll(extractDir)
+					sys.ReleaseTempStorage(extractDir, isExtractRAM, allocatedExtractBytes)
 				}
 				fyne.Do(func() { dialog.ShowError(err, w) })
 				return
@@ -1436,9 +1442,9 @@ func addFilesToArchive(archivePath, relPath, password string, items []domain.Cli
 			if err = os.Symlink(item.SrcPath, destPath); err != nil {
 				// Stage to target without conflict prompts (pass nil pasteContext)
 				if err = copyFileOrDir(nil, item.SrcPath, destPath); err != nil {
-					os.RemoveAll(tempDir)
+					sys.ReleaseTempStorage(tempDir, isStageRAM, allocatedStageBytes)
 					if extractDir != "" {
-						os.RemoveAll(extractDir)
+						sys.ReleaseTempStorage(extractDir, isExtractRAM, allocatedExtractBytes)
 					}
 					fyne.Do(func() { dialog.ShowError(err, w) })
 					return
@@ -1465,9 +1471,9 @@ func addFilesToArchive(archivePath, relPath, password string, items []domain.Cli
 			fyne.Do(func() {
 				targetArchive := filepath.Base(archivePath)
 				engine.StartOperation(targetArchive, args, "Adding to Archive", tempDir, w, func() {
-					os.RemoveAll(tempDir)
+					sys.ReleaseTempStorage(tempDir, isStageRAM, allocatedStageBytes)
 					if extractDir != "" {
-						os.RemoveAll(extractDir)
+						sys.ReleaseTempStorage(extractDir, isExtractRAM, allocatedExtractBytes)
 					}
 
 					var stateCopy *explorerTabState
@@ -1497,9 +1503,9 @@ func addFilesToArchive(archivePath, relPath, password string, items []domain.Cli
 						if confirmed {
 							go cleanupAndRun()
 						} else {
-							os.RemoveAll(tempDir)
+							sys.ReleaseTempStorage(tempDir, isStageRAM, allocatedStageBytes)
 							if extractDir != "" {
-								os.RemoveAll(extractDir)
+								sys.ReleaseTempStorage(extractDir, isExtractRAM, allocatedExtractBytes)
 							}
 						}
 					},

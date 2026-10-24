@@ -5,7 +5,9 @@ const (
 	AppID            = "com.softorage.7gl"
 	AppDirName       = "7z-gui-linux"
 	LegacyAppDirName = "7-zip-gui"
-	TmpfsDefaultDir  = "/dev/shm/" + AppDirName
+
+	DiskSubdirScratch = "scratch"
+	DiskSubdirNested  = "nested"
 
 	MinRAMUsagePercent = 10
 	MaxRAMUsagePercent = 90

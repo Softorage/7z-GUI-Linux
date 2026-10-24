@@ -10,6 +10,7 @@ FYNE_APP_ID="com.softorage.7gl"
 LEGACY_APP_NAME="7-zip-gui"
 
 PURGE_CONFIG=false
+KEEP_WORKSPACES=false
 
 # Parse CLI arguments
 while [ "$#" -gt 0 ]; do
@@ -92,6 +93,8 @@ if [ "$EUID" -eq 0 ] && [ -d "/root/.cache" ]; then
 fi
 
 if [ "$KEEP_WORKSPACES" = false ]; then
+    USER_UID=$(id -u "$REAL_USER")
+    rm -rf "/run/user/$USER_UID/$APP_DIR_NAME" "/dev/shm/7gl-$USER_UID" "/dev/shm/7gl-$USER_UID-"* "/tmp/7gl-$USER_UID" "/tmp/7gl-$USER_UID-"* 2>/dev/null || true
     rm -rf /tmp/7gl-* /dev/shm/7gl-* "/dev/shm/$APP_DIR_NAME" 2>/dev/null || true
 fi
 

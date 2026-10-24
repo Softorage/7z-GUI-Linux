@@ -26,6 +26,9 @@ func main() {
 	debug.SetGCPercent(50)
 	debug.SetMemoryLimit(32 * 1024 * 1024)
 
+	// Clean up any orphaned scratch directories from prior crashed sessions
+	sys.CleanupStaleWorkspaces()
+
 	a := app.NewWithID(domain.AppID)
 	if err := appstate.InitConfig(); err != nil {
 		fmt.Printf("Warning: Failed to initialize configuration: %v\n", err)

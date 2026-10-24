@@ -2,10 +2,13 @@ package sys
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 )
@@ -87,9 +90,33 @@ func IsTmpfs(path string) bool {
 	return syscall.Statfs(path, &stat) == nil && uint64(stat.Type) == 0x01021994
 }
 
+// getRAMCandidates returns candidate tmpfs base directories in prioritized RFC-compliant order.
+// Uses a stack-allocated array to avoid heap allocations.
+func getRAMCandidates() [3]string {
+	var candidates [3]string
+	if xdgRuntime := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR")); xdgRuntime != "" {
+		candidates[0] = filepath.Join(xdgRuntime, domain.AppDirName)
+	}
+	uid := os.Getuid()
+	candidates[1] = fmt.Sprintf("/dev/shm/7gl-%d", uid)
+	candidates[2] = fmt.Sprintf("/tmp/7gl-%d", uid)
+	return candidates
+}
+
+// GetRAMBaseDir resolves the primary active user-isolated tmpfs mount for telemetry and staging.
+func GetRAMBaseDir() (string, bool) {
+	candidates := getRAMCandidates()
+	for _, c := range candidates {
+		if c != "" && IsTmpfs(filepath.Dir(c)) {
+			return c, true
+		}
+	}
+	return "", false
+}
+
 // SelectTempStorage decides whether to stage uncompressed files in RAM (tmpfs) or disk storage.
 // strictly bounded by available system RAM, user preferences, and global active staging quotas.
-func SelectTempStorage(requiredBytes uint64, ramPercent int, ramLimitMB int64) (string, bool, uint64) {
+func SelectTempStorage(category string, requiredBytes uint64, ramPercent int, ramLimitMB int64) (string, bool, uint64) {
 	if ramPercent <= 0 {
 		ramPercent = domain.DefaultRAMPercent
 	}
@@ -116,30 +143,70 @@ func SelectTempStorage(requiredBytes uint64, ramPercent int, ramLimitMB int64) (
 	// addition wraps around to a small integer and silently bypasses the budget check.
 	currentActive := activeRAMStagingBytes.Load()
 	if currentActive <= ramBudget && requiredBytes <= ramBudget-currentActive {
+		candidates := getRAMCandidates()
+		// TODO: Explore below
 		// Evaluate candidate tmpfs mounts in priority order.
-		// Uses a fixed-size array literal [...] to allocate strictly on stack (zero heap allocation).
-		for _, mount := range [...]string{"/dev/shm", "/tmp"} {
+		// Use a fixed-size array literal [...] to allocate strictly on stack (zero heap allocation).
+		for _, baseDir := range candidates {
+			if baseDir == "" {
+				continue
+			}
+			parentMount := filepath.Dir(baseDir)
 			// Enforce a strict 2x capacity headroom to prevent exhausting tmpfs.
 			// NOTE: Division (avail / 2 >= req) is used instead of multiplication (avail >= req * 2)
 			// to guarantee that requiredBytes cannot cause a uint64 multiplication overflow.
-			if IsTmpfs(mount) && GetPathAvailableBytes(mount)/2 >= requiredBytes {
-				if dir, err := os.MkdirTemp(mount, "7gl-ram-*"); err == nil {
-					activeRAMStagingBytes.Add(requiredBytes)
-					return dir, true, requiredBytes
+			if IsTmpfs(parentMount) && GetPathAvailableBytes(parentMount)/2 >= requiredBytes {
+				if err := os.MkdirAll(baseDir, 0700); err == nil {
+					if dir, err := os.MkdirTemp(baseDir, "7gl-ram-*"); err == nil {
+						activeRAMStagingBytes.Add(requiredBytes)
+						return dir, true, requiredBytes
+					}
 				}
 			}
 		}
 	}
 
-	// Fallback to disk cache directory
-	nestedCache := filepath.Join(GetDiskCacheDir(), "nested")
-	_ = os.MkdirAll(nestedCache, 0755)
-
-	dir, err := os.MkdirTemp(nestedCache, "7gl-disk-*")
+	// Fallback to disk cache scratch/nested partition
+	diskScratch := GetDiskScratchDir(category)
+	dir, err := os.MkdirTemp(diskScratch, "7gl-disk-*")
 	if err != nil {
 		dir, _ = os.MkdirTemp("", "7gl-disk-*")
 	}
 	return dir, false, 0
+}
+
+// CleanupStaleWorkspaces purges leftover scratch directories older than 2 hours from prior crashes.
+func CleanupStaleWorkspaces() {
+	const maxAge = 2 * time.Hour
+	now := time.Now()
+
+	cleanDir := func(parent string) {
+		entries, err := os.ReadDir(parent)
+		if err != nil {
+			return
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "7gl-") {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			if now.Sub(info.ModTime()) > maxAge {
+				_ = os.RemoveAll(filepath.Join(parent, entry.Name()))
+			}
+		}
+	}
+
+	cleanDir(filepath.Join(GetDiskCacheDir(), domain.DiskSubdirScratch))
+	cleanDir(filepath.Join(GetDiskCacheDir(), domain.DiskSubdirNested))
+
+	for _, c := range getRAMCandidates() {
+		if c != "" {
+			cleanDir(c)
+		}
+	}
 }
 
 // ReleaseTempStorage removes the temporary workspace and decrements any active RAM staging quota.

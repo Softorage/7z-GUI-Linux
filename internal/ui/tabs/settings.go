@@ -224,12 +224,15 @@ func BuildSettingsTab(w fyne.Window, a fyne.App) fyne.CanvasObject {
 	)
 
 	// Section Write Locations
-	createPathRow := func(path string, label string) fyne.CanvasObject {
+	createPathRow := func(path string, label string, isAvailable bool) fyne.CanvasObject {
 		copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
 			a.Clipboard().SetContent(path)
 			appstate.SetInfo(fmt.Sprintf("%s copied to clipboard.", label))
 		})
 		copyBtn.Importance = widget.LowImportance
+		if !isAvailable {
+			copyBtn.Disable()
+		}
 
 		pathLabel := widget.NewLabel(path)
 		pathLabel.TextStyle = fyne.TextStyle{Monospace: true}
@@ -238,10 +241,16 @@ func BuildSettingsTab(w fyne.Window, a fyne.App) fyne.CanvasObject {
 		return container.NewBorder(nil, nil, nil, copyBtn, pathLabel)
 	}
 
+	ramPath, hasRAM := sys.GetRAMBaseDir()
+	ramDisplay := ramPath
+	if !hasRAM || ramPath == "" {
+		ramDisplay = "Unavailable (Disk cache fallback only)"
+	}
+
 	storageForm := widget.NewForm(
-		widget.NewFormItem("Configuration:", createPathRow(appstate.GetConfigFilePath(), "Config path")),
-		widget.NewFormItem("Disk Cache:", createPathRow(sys.GetDiskCacheDir(), "Disk cache directory")),
-		widget.NewFormItem("RAM tmpfs Staging:", createPathRow(domain.TmpfsDefaultDir, "RAM tmpfs path")),
+		widget.NewFormItem("Configuration:", createPathRow(appstate.GetConfigFilePath(), "Config path", true)),
+		widget.NewFormItem("Disk Cache:", createPathRow(sys.GetDiskCacheDir(), "Disk cache directory", true)),
+		widget.NewFormItem("RAM tmpfs Staging:", createPathRow(ramDisplay, "RAM tmpfs path", hasRAM)),
 	)
 
 	writeLocationsSection := container.NewVBox(

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	appstate "github.com/Softorage/7z-GUI-Linux/internal/app"
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 	"github.com/Softorage/7z-GUI-Linux/internal/sys"
 )
@@ -72,23 +73,28 @@ func ExtractArchive(archivePath, destDir, password string, targets ...string) er
 }
 
 // ExtractArchiveItems extracts clipboard entries situated inside virtual archives into temporary disk staging locations.
-// Returns a mapping of original virtual paths to their temporary local disk paths, the temporary directory path itself, and any error encountered.
-func ExtractArchiveItems(items []domain.ClipboardItem) (map[string]string, string, error) {
+// Staging uses RAM tmpfs when within user memory limits, falling back to disk cache scratch space.
+func ExtractArchiveItems(items []domain.ClipboardItem) (map[string]string, string, bool, uint64, error) {
 	hasArchiveItems := false
+	var requiredBytes uint64
 	for _, item := range items {
 		if item.IsArchive {
 			hasArchiveItems = true
-			break
+			if item.Size > 0 {
+				requiredBytes += uint64(item.Size)
+			}
 		}
 	}
 	if !hasArchiveItems {
-		return nil, "", nil
+		return nil, "", false, 0, nil
 	}
 
-	tempDir, err := os.MkdirTemp("", "7gl-extract-*")
-	if err != nil {
-		return nil, "", err
-	}
+	appstate.UserConfigMu.RLock()
+	ramPercent := appstate.UserConfig.System.RAMUsagePercent
+	ramLimitMB := appstate.UserConfig.System.RAMLimitMB
+	appstate.UserConfigMu.RUnlock()
+
+	tempDir, isRAM, allocatedBytes := sys.SelectTempStorage(domain.DiskSubdirScratch, requiredBytes, ramPercent, ramLimitMB)
 
 	// Group items by archive path and record passwords so we can batch extract with a single 7-Zip process per archive
 	passwords := make(map[string]string)
@@ -105,8 +111,8 @@ func ExtractArchiveItems(items []domain.ClipboardItem) (map[string]string, strin
 
 	for archivePath, paths := range groups {
 		if err := ExtractArchive(archivePath, tempDir, passwords[archivePath], paths...); err != nil {
-			os.RemoveAll(tempDir)
-			return nil, "", fmt.Errorf("failed to extract from archive %s: %w", filepath.Base(archivePath), err)
+			sys.ReleaseTempStorage(tempDir, isRAM, allocatedBytes)
+			return nil, "", false, 0, fmt.Errorf("failed to extract from archive %s: %w", filepath.Base(archivePath), err)
 		}
 	}
 
@@ -117,7 +123,7 @@ func ExtractArchiveItems(items []domain.ClipboardItem) (map[string]string, strin
 		}
 	}
 
-	return pathMap, tempDir, nil
+	return pathMap, tempDir, isRAM, allocatedBytes, nil
 }
 
 // ListArchive retrieves detailed metadata from an archive using 7-Zip's SLT flag `-slt`.

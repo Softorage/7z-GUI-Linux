@@ -69,6 +69,7 @@ type ClipboardItem struct {
 	Path        string // Full disk path or internal virtual relative path
 	IsDir       bool
 	Op          string // "cut" or "copy"
+	Size        int64  // File size in bytes (0 for directories)
 	IsArchive   bool   // Whether the source item is inside an archive
 	ArchivePath string // Source archive disk path (if IsArchive is true)
 	Password    string // Archive password (if IsArchive is true and encrypted)

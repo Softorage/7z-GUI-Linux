@@ -43,7 +43,19 @@ func GetDiskCacheDir() string {
 	if err != nil {
 		cacheDir = os.TempDir()
 	}
-	return filepath.Join(cacheDir, domain.AppDirName)
+	dir := filepath.Join(cacheDir, domain.AppDirName)
+	_ = os.MkdirAll(dir, 0700)
+	return dir
+}
+
+// GetDiskScratchDir returns a verified, per-user disk cache subdirectory for transient operations.
+func GetDiskScratchDir(category string) string {
+	if category == "" {
+		category = domain.DiskSubdirScratch
+	}
+	target := filepath.Join(GetDiskCacheDir(), category)
+	_ = os.MkdirAll(target, 0700)
+	return target
 }
 
 func isDigit(b byte) bool {
