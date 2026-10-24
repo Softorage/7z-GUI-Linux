@@ -177,6 +177,7 @@ go build -o 7z-GUI-Linux .
     │   ├── args.go             # DRY 7-zip CLI argument builder
     │   ├── parser.go           # Archive SLT output & checksum log stream parser
     │   ├── runner.go           # Subprocess execution, SIGSTOP/SIGCONT signals, terminal log handler
+    │   ├── memory.go           # Memory usage estimation, thread concurrency governor & -mmemuse switch builder
     │   └── archive.go          # Multi-stage tarball streaming pipes & password tests
     │
     ├── app/                    # Central State Management & Business Core
