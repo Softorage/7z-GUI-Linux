@@ -6,10 +6,12 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/Softorage/7z-GUI-Linux/internal/domain"
 )
@@ -675,4 +677,78 @@ func ParseCLIPaths(args []string) []string {
 		}
 	}
 	return targets
+}
+
+// ResolveBinaryLocation returns the canonical filesystem path of the running executable.
+func ResolveBinaryLocation() (string, error) {
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("failed to obtain executable path: %w", err)
+	}
+	realPath, err := filepath.EvalSymlinks(exePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve binary symlink: %w", err)
+	}
+	return filepath.Clean(realPath), nil
+}
+
+// IsInstallWritable reports whether the current user has write permissions to update the target binary.
+func IsInstallWritable(binaryPath string) bool {
+	dir := filepath.Dir(binaryPath)
+	// POSIX access mode 2 corresponds to W_OK (write permission)
+	if err := syscall.Access(dir, 2); err != nil {
+		return false
+	}
+	if err := syscall.Access(binaryPath, 2); err != nil && !os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+// FindUpdateScript locates update.sh directly in the root of the extracted package.
+func FindUpdateScript(extractedDir string) string {
+	p := filepath.Join(extractedDir, "update.sh")
+	if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+		return p
+	}
+	return ""
+}
+
+func ExecuteUpdateScript(scriptPath string, isWritable bool) (*exec.Cmd, error) {
+	if err := os.Chmod(scriptPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to set execution permission on script: %w", err)
+	}
+
+	shell := "bash"
+	if path, err := exec.LookPath("bash"); err == nil {
+		shell = path
+	} else {
+		shell = "/bin/sh"
+	}
+
+	var cmd *exec.Cmd
+	if isWritable {
+		cmd = exec.Command(shell, scriptPath)
+	} else {
+		if _, err := exec.LookPath("pkexec"); err == nil {
+			cmd = exec.Command("pkexec", shell, scriptPath)
+		} else {
+			return nil, fmt.Errorf("root privileges required for update, but 'pkexec' was not found")
+		}
+	}
+
+	// Diagnostic log file so stdout/stderr can be inspected if install fails
+	logFile, err := os.OpenFile("/tmp/7gl-update.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err == nil {
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+	}
+
+	cmd.Dir = filepath.Dir(scriptPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start updater script: %w", err)
+	}
+	return cmd, nil
 }

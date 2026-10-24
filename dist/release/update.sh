@@ -10,7 +10,7 @@ echo "Starting update..."
 # Export DESTDIR so sub-scripts see it
 export DESTDIR
 
-bash ./uninstall.sh
+bash ./uninstall.sh --keep-workspaces
 bash ./install.sh
 
 echo "Update finished!"

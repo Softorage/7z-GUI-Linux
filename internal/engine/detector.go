@@ -5,12 +5,37 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
 )
 
 var Root7zCmd string = "7z"
+
+// DetectDisplayServer determines whether the running desktop session is Wayland or X11.
+func DetectDisplayServer() string {
+	sessionType := strings.ToLower(strings.TrimSpace(os.Getenv("XDG_SESSION_TYPE")))
+	if sessionType == "wayland" || os.Getenv("WAYLAND_DISPLAY") != "" {
+		return "wayland"
+	}
+	return "x11"
+}
+
+// DetectArch returns the normalized architecture string matching release asset conventions.
+func DetectArch() string {
+	switch runtime.GOARCH {
+	case "amd64":
+		return "amd64"
+	case "arm64":
+		return "arm64"
+	case "386":
+		return "386"
+	default:
+		return runtime.GOARCH
+	}
+}
 
 func CheckDependencies(w fyne.Window) {
 	// Check for 7zz in PATH

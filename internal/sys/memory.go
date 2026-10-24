@@ -111,19 +111,22 @@ func SelectTempStorage(requiredBytes uint64, ramPercent int, ramLimitMB int64) (
 	}
 
 	// Verify that aggregate RAM staging across all open tabs remains within the budget
+	// NOTE: Subtraction used instead of addition (currentActive + requiredBytes <= ramBudget).
+	// If an archive reports an adversarial or corrupted uncompressed size near MaxUint64,
+	// addition wraps around to a small integer and silently bypasses the budget check.
 	currentActive := activeRAMStagingBytes.Load()
-	if currentActive+requiredBytes <= ramBudget {
-		if IsTmpfs("/dev/shm") && GetPathAvailableBytes("/dev/shm") >= requiredBytes*2 {
-			if dir, err := os.MkdirTemp("/dev/shm", "7gl-ram-*"); err == nil {
-				activeRAMStagingBytes.Add(requiredBytes)
-				return dir, true, requiredBytes
-			}
-		}
-
-		if IsTmpfs("/tmp") && GetPathAvailableBytes("/tmp") >= requiredBytes*2 {
-			if dir, err := os.MkdirTemp("/tmp", "7gl-ram-*"); err == nil {
-				activeRAMStagingBytes.Add(requiredBytes)
-				return dir, true, requiredBytes
+	if currentActive <= ramBudget && requiredBytes <= ramBudget-currentActive {
+		// Evaluate candidate tmpfs mounts in priority order.
+		// Uses a fixed-size array literal [...] to allocate strictly on stack (zero heap allocation).
+		for _, mount := range [...]string{"/dev/shm", "/tmp"} {
+			// Enforce a strict 2x capacity headroom to prevent exhausting tmpfs.
+			// NOTE: Division (avail / 2 >= req) is used instead of multiplication (avail >= req * 2)
+			// to guarantee that requiredBytes cannot cause a uint64 multiplication overflow.
+			if IsTmpfs(mount) && GetPathAvailableBytes(mount)/2 >= requiredBytes {
+				if dir, err := os.MkdirTemp(mount, "7gl-ram-*"); err == nil {
+					activeRAMStagingBytes.Add(requiredBytes)
+					return dir, true, requiredBytes
+				}
 			}
 		}
 	}

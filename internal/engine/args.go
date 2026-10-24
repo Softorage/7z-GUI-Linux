@@ -172,6 +172,7 @@ func Build7zArgs(src []string, outputDir string, customName string, format strin
 		reqThreads = 1
 	}
 
+	// Memory governor
 	totalRAM := sys.GetTotalRAMBytes()
 	limitBytes := ResolveMemoryLimitBytes(memLimitUnit, memLimitVal, totalRAM)
 	allowedThreads, _, _, _ := GovernThreads(format, level, method, dictSize, reqThreads, limitBytes)

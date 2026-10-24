@@ -18,12 +18,17 @@ while [ "$#" -gt 0 ]; do
             PURGE_CONFIG=true
             shift
             ;;
+        -w|--keep-workspaces)
+            KEEP_WORKSPACES=true
+            shift
+            ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
-            echo "  -p, --purge        Remove binaries, desktop entries, caches, AND all configuration/Fyne storage"
-            echo "  -k, --keep-config  Remove binaries and caches but retain user configuration (default)"
-            echo "  -h, --help         Display this help message"
+            echo "  -p, --purge             Remove binaries, desktop entries, caches, AND all configuration/Fyne storage"
+            echo "  -k, --keep-config       Remove binaries and caches but retain user configuration (default)"
+            echo "  -w, --keep-workspaces   Retain active temporary staging workspaces (/tmp/7gl-*, /dev/shm/7gl-*)"
+            echo "  -h, --help              Display this help message"
             exit 0
             ;;
         *)
@@ -86,7 +91,9 @@ if [ "$EUID" -eq 0 ] && [ -d "/root/.cache" ]; then
     rm -rf "/root/.cache/$APP_DIR_NAME" "/root/.cache/$LEGACY_APP_NAME" "/root/.cache/fyne/$FYNE_APP_ID" "/root/.cache/$FYNE_APP_ID"
 fi
 
-rm -rf /tmp/7gl-* /dev/shm/7gl-* "/dev/shm/$APP_DIR_NAME" 2>/dev/null || true
+if [ "$KEEP_WORKSPACES" = false ]; then
+    rm -rf /tmp/7gl-* /dev/shm/7gl-* "/dev/shm/$APP_DIR_NAME" 2>/dev/null || true
+fi
 
 # Handle user preferences, Fyne metadata, and local data removal
 USER_CONFIG_DIR="${XDG_CONFIG_HOME:-$USER_HOME/.config}"

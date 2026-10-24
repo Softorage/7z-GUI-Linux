@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -15,10 +16,17 @@ import (
 	"github.com/Softorage/7z-GUI-Linux/internal/version"
 )
 
+type GithubAsset struct {
+	Name               string `json:"name"`
+	Size               int64  `json:"size"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+}
+
 type GithubRelease struct {
-	TagName string `json:"tag_name"`
-	HTMLURL string `json:"html_url"`
-	Body    string `json:"body"`
+	TagName string        `json:"tag_name"`
+	HTMLURL string        `json:"html_url"`
+	Body    string        `json:"body"`
+	Assets  []GithubAsset `json:"assets"`
 }
 
 var httpClient = &http.Client{
@@ -27,6 +35,136 @@ var httpClient = &http.Client{
 		DisableKeepAlives: true,
 		Proxy:             http.ProxyFromEnvironment,
 	},
+}
+
+var downloadClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DisableKeepAlives:     false,
+		MaxIdleConns:          5,
+		MaxIdleConnsPerHost:   2,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+}
+
+// FindMatchingAsset resolves the release package matching the display server and architecture.
+func FindMatchingAsset(rel *GithubRelease, display, arch string) *GithubAsset {
+	if rel == nil || len(rel.Assets) == 0 {
+		return nil
+	}
+
+	dispLower := strings.ToLower(strings.TrimSpace(display))
+	archLower := strings.ToLower(strings.TrimSpace(arch))
+
+	// Primary target format: 7z-GUI-Linux-<display>-<arch>.tar.xz
+	canonical := fmt.Sprintf("7z-gui-linux-%s-%s.tar.xz", dispLower, archLower)
+	for i := range rel.Assets {
+		if strings.ToLower(rel.Assets[i].Name) == canonical {
+			return &rel.Assets[i]
+		}
+	}
+
+	// Segmented fallback: matches any archive containing "-<display>-<arch>."
+	token := fmt.Sprintf("-%s-%s.", dispLower, archLower)
+	for i := range rel.Assets {
+		nameLower := strings.ToLower(rel.Assets[i].Name)
+		if strings.Contains(nameLower, token) {
+			return &rel.Assets[i]
+		}
+	}
+
+	return nil
+}
+
+// ProgressReader wraps an io.Reader and emits rate-throttled progress updates to the UI.
+type ProgressReader struct {
+	reader     io.Reader
+	total      int64
+	current    int64
+	lastTime   time.Time
+	lastRatio  float64
+	onProgress func(ratio float64, currentBytes, totalBytes int64)
+}
+
+func NewProgressReader(r io.Reader, total int64, onProgress func(float64, int64, int64)) *ProgressReader {
+	return &ProgressReader{
+		reader:     r,
+		total:      total,
+		onProgress: onProgress,
+	}
+}
+
+func (pr *ProgressReader) Read(p []byte) (int, error) {
+	n, err := pr.reader.Read(p)
+	if n > 0 {
+		pr.current += int64(n)
+		var ratio float64
+		if pr.total > 0 {
+			ratio = float64(pr.current) / float64(pr.total)
+			if ratio > 1.0 {
+				ratio = 1.0
+			}
+		}
+
+		now := time.Now()
+		// Throttle GUI dispatches: >= 0.5% advance, >= 50ms interval, or terminal EOF
+		isTerminal := err == io.EOF || (pr.total > 0 && pr.current >= pr.total)
+		if (ratio-pr.lastRatio >= 0.005) || now.Sub(pr.lastTime) >= 50*time.Millisecond || isTerminal {
+			pr.lastRatio = ratio
+			pr.lastTime = now
+			if pr.onProgress != nil {
+				cur, tot, r := pr.current, pr.total, ratio
+				cb := pr.onProgress
+				fyne.Do(func() {
+					cb(r, cur, tot)
+				})
+			}
+		}
+	}
+	return n, err
+}
+
+// DownloadAsset streams a release asset directly to destPath using downloadClient.
+func DownloadAsset(ctx context.Context, asset *GithubAsset, destPath string, onProgress func(ratio float64, currentBytes, totalBytes int64)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.BrowserDownloadURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create download request: %w", err)
+	}
+	req.Header.Set("User-Agent", "7GL-App/"+version.Version)
+	req.Header.Set("Accept", "application/octet-stream")
+
+	resp, err := downloadClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("network error downloading asset: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned unexpected status %s", resp.Status)
+	}
+
+	totalSize := asset.Size
+	if totalSize <= 0 && resp.ContentLength > 0 {
+		totalSize = resp.ContentLength
+	}
+
+	outFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open output file: %w", err)
+	}
+	defer outFile.Close()
+
+	buf := make([]byte, 64*1024)
+	progressR := NewProgressReader(resp.Body, totalSize, onProgress)
+	if _, err := io.CopyBuffer(outFile, progressR, buf); err != nil {
+		_ = os.Remove(destPath)
+		return fmt.Errorf("stream error during download: %w", err)
+	}
+
+	return nil
 }
 
 // FetchLatestRelease queries the GitHub API for the latest published release.
@@ -56,8 +194,8 @@ func FetchLatestRelease(parent context.Context) (*GithubRelease, error) {
 		return nil, fmt.Errorf("server returned unexpected status: %s", resp.Status)
 	}
 
-	// Strictly bound response body to 128 KB to prevent unbounded memory allocation
-	limitedReader := io.LimitReader(resp.Body, 128*1024)
+	// Bounded to 2 MB to safely accommodate releases with many architecture assets
+	limitedReader := io.LimitReader(resp.Body, 2*1024*1024)
 	var rel GithubRelease
 	if err := json.NewDecoder(limitedReader).Decode(&rel); err != nil {
 		return nil, fmt.Errorf("failed to decode release payload: %w", err)
