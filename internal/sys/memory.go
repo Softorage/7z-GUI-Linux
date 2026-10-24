@@ -90,28 +90,59 @@ func IsTmpfs(path string) bool {
 	return syscall.Statfs(path, &stat) == nil && uint64(stat.Type) == 0x01021994
 }
 
-// getRAMCandidates returns candidate tmpfs base directories in prioritized RFC-compliant order.
-// Uses a stack-allocated array to avoid heap allocations.
-func getRAMCandidates() [3]string {
-	var candidates [3]string
+type ramCandidate struct {
+	baseDir     string
+	parentMount string
+	minReserve  uint64 // Hard safety floor in bytes
+}
+
+var ramCandidates [3]ramCandidate
+
+func init() {
+	idx := 0
 	if xdgRuntime := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR")); xdgRuntime != "" {
-		candidates[0] = filepath.Join(xdgRuntime, domain.AppDirName)
+		ramCandidates[idx] = ramCandidate{
+			baseDir:     filepath.Join(xdgRuntime, domain.AppDirName),
+			parentMount: xdgRuntime,
+			minReserve:  128 * 1024 * 1024, // 128 MB floor for Wayland/PipeWire/session sockets
+		}
+		idx++
 	}
 	uid := os.Getuid()
-	candidates[1] = fmt.Sprintf("/dev/shm/7gl-%d", uid)
-	candidates[2] = fmt.Sprintf("/tmp/7gl-%d", uid)
-	return candidates
+	ramCandidates[idx] = ramCandidate{
+		baseDir:     fmt.Sprintf("/dev/shm/7gl-%d", uid),
+		parentMount: "/dev/shm",
+		minReserve:  256 * 1024 * 1024, // 256 MB floor for browser/IPC shared memory
+	}
+	idx++
+	ramCandidates[idx] = ramCandidate{
+		baseDir:     fmt.Sprintf("/tmp/7gl-%d", uid),
+		parentMount: "/tmp",
+		minReserve:  256 * 1024 * 1024, // 256 MB floor for general temporary workloads
+	}
 }
 
 // GetRAMBaseDir resolves the primary active user-isolated tmpfs mount for telemetry and staging.
 func GetRAMBaseDir() (string, bool) {
-	candidates := getRAMCandidates()
-	for _, c := range candidates {
-		if c != "" && IsTmpfs(filepath.Dir(c)) {
-			return c, true
+	for _, c := range ramCandidates {
+		if c.baseDir != "" && IsTmpfs(c.parentMount) {
+			return c.baseDir, true
 		}
 	}
 	return "", false
+}
+
+// hasSufficientRAMHeadroom verifies that requiredBytes can be staged while preserving
+// at least an 83.4% usable limit and a safety cushion (minReserve).
+// Uses pure division instead of multiplication to guarantee immunity from uint64 overflow.
+func hasSufficientRAMHeadroom(parentMount string, requiredBytes, minReserve uint64) bool {
+	avail := GetPathAvailableBytes(parentMount)
+	ratioReserve := avail / 6 // ~16.6% reserve (83.4% usable); strictly overflow-safe
+	reserve := minReserve
+	if ratioReserve > reserve {
+		reserve = ratioReserve
+	}
+	return avail > reserve && requiredBytes <= avail-reserve
 }
 
 // SelectTempStorage decides whether to stage uncompressed files in RAM (tmpfs) or disk storage.
@@ -143,21 +174,14 @@ func SelectTempStorage(category string, requiredBytes uint64, ramPercent int, ra
 	// addition wraps around to a small integer and silently bypasses the budget check.
 	currentActive := activeRAMStagingBytes.Load()
 	if currentActive <= ramBudget && requiredBytes <= ramBudget-currentActive {
-		candidates := getRAMCandidates()
-		// TODO: Explore below
-		// Evaluate candidate tmpfs mounts in priority order.
-		// Use a fixed-size array literal [...] to allocate strictly on stack (zero heap allocation).
-		for _, baseDir := range candidates {
-			if baseDir == "" {
+		// Evaluate candidate tmpfs mounts in priority order with practical headroom cushions (zero heap allocation).
+		for _, c := range ramCandidates {
+			if c.baseDir == "" {
 				continue
 			}
-			parentMount := filepath.Dir(baseDir)
-			// Enforce a strict 2x capacity headroom to prevent exhausting tmpfs.
-			// NOTE: Division (avail / 2 >= req) is used instead of multiplication (avail >= req * 2)
-			// to guarantee that requiredBytes cannot cause a uint64 multiplication overflow.
-			if IsTmpfs(parentMount) && GetPathAvailableBytes(parentMount)/2 >= requiredBytes {
-				if err := os.MkdirAll(baseDir, 0700); err == nil {
-					if dir, err := os.MkdirTemp(baseDir, "7gl-ram-*"); err == nil {
+			if IsTmpfs(c.parentMount) && hasSufficientRAMHeadroom(c.parentMount, requiredBytes, c.minReserve) {
+				if err := os.MkdirAll(c.baseDir, 0700); err == nil {
+					if dir, err := os.MkdirTemp(c.baseDir, "7gl-ram-*"); err == nil {
 						activeRAMStagingBytes.Add(requiredBytes)
 						return dir, true, requiredBytes
 					}
@@ -202,9 +226,9 @@ func CleanupStaleWorkspaces() {
 	cleanDir(filepath.Join(GetDiskCacheDir(), domain.DiskSubdirScratch))
 	cleanDir(filepath.Join(GetDiskCacheDir(), domain.DiskSubdirNested))
 
-	for _, c := range getRAMCandidates() {
-		if c != "" {
-			cleanDir(c)
+	for _, c := range ramCandidates {
+		if c.baseDir != "" {
+			cleanDir(c.baseDir)
 		}
 	}
 }
