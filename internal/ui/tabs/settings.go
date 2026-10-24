@@ -137,7 +137,7 @@ func BuildSettingsTab(w fyne.Window, a fyne.App) fyne.CanvasObject {
 		if strings.TrimSpace(ramLimitEntry.Text) != "" {
 			parsedVal, parseErr := strconv.ParseInt(strings.TrimSpace(ramLimitEntry.Text), 10, 64)
 			if parseErr == nil && parsedVal < 512 {
-				ramLimitWarning.SetText("Note: Staging cap below 512 MB will cause most nested archives to stage on disk.")
+				ramLimitWarning.SetText("Note: Staging cap below 512 MB will cause most staging operations to use disk cache.")
 				ramLimitWarning.Show()
 			} else {
 				ramLimitWarning.Hide()
@@ -145,7 +145,7 @@ func BuildSettingsTab(w fyne.Window, a fyne.App) fyne.CanvasObject {
 		}
 
 		ramDiagnosticLabel.SetText(fmt.Sprintf(
-			"System RAM: %s (Available: %s)\nEffective Max RAM Staging: %s (larger archives will stage on disk cache)",
+			"System RAM: %s (Available: %s)\nEffective Max RAM Staging: %s (operations exceeding this will stage in disk cache)",
 			sys.FormatSize(int64(totalRAM)),
 			sys.FormatSize(int64(availRAM)),
 			sys.FormatSize(int64(budget)),
@@ -195,7 +195,7 @@ func BuildSettingsTab(w fyne.Window, a fyne.App) fyne.CanvasObject {
 	updateRAMDiagnostics()
 
 	ramSection := container.NewVBox(
-		widget.NewLabelWithStyle("RAM Staging for Nested Archives", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabelWithStyle("RAM Staging & Temporary Workspaces", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewSeparator(),
 		widget.NewForm(
 			widget.NewFormItem("RAM Allocation (%):", container.NewBorder(nil, nil, nil, ramPercentLabel, ramSlider)),
